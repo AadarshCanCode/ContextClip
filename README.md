@@ -1,8 +1,8 @@
 # ContextClip v4 Backend
 
-ContextClip is a Windows workflow-memory backend built around copy and paste events. Every copy is one immutable event, every paste is a separate immutable event, and each event can carry window metadata, payload metadata, screenshot references, graph links, and plugin context.
+ContextClip is a Windows desktop workflow-memory agent built around copy and paste events. Every copy is one immutable event, every paste is a separate immutable event, and each event can carry window metadata, payload metadata, screenshot references, graph links, and plugin context.
 
-Frontend code has been removed for now. The supported surface is the backend CLI plus the agent service.
+The active desktop surface is a native Tkinter copy bubble. The web dashboard and tray app are removed from the active code path.
 
 ## What It Does
 
@@ -13,6 +13,7 @@ Frontend code has been removed for now. The supported surface is the backend CLI
 - Serializes LLM-bound event windows as TOON and user exports as Markdown.
 - Uses OpenRouter for optional seven-event compression.
 - Uses Exa Search for optional clipboard reference search.
+- Shows a native desktop bubble near the copy location with routed actions.
 
 ## Install
 
@@ -37,10 +38,16 @@ Use `.env.example` as the reproducible template.
 
 ## Commands
 
-Run the backend clipboard agent:
+Run the native desktop bubble agent:
 
 ```powershell
 python main.py
+```
+
+Run the headless clipboard agent:
+
+```powershell
+python main.py --agent
 ```
 
 List concrete backend actions:
@@ -95,9 +102,11 @@ Screenshots are captured only at copy or paste event boundaries. Restricted clip
 ```text
 main.py                  backend CLI entry point
 apps/agent.py            clipboard agent and backend API facade
-core/                    config, actions, contracts, capture, graph, memory, privacy
+apps/bubble.py           native Tkinter context bubble
+apps/bubble_runtime.py   desktop bubble app runner
+core/                    config, actions, action routing, context analysis, contracts, capture, graph, memory, privacy
 storage/                 SQLite schema and repositories
-cloud/                   TOON, Markdown export, OpenRouter, Exa search
+cloud/                   TOON, Markdown export, OpenRouter, Exa search, clipboard analysis/actions
 plugins/                 plugin SDK and starter app plugins
 docs/backend_methods.md  backend method reference
 tests/                   backend regression tests

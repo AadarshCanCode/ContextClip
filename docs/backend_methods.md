@@ -7,7 +7,8 @@ This reference tracks the active backend only. Removed dashboards, tray code, an
 | Method | Reference | Purpose |
 | --- | --- | --- |
 | `configure_console_io` | `main.py` | Prefers UTF-8 CLI output on Windows consoles. |
-| `run_agent_only` | `main.py` | Starts the backend clipboard agent service. |
+| `run_agent_only` | `main.py` | Starts the headless clipboard agent service. |
+| `run_desktop_bubble` | `main.py` | Starts the native desktop bubble agent. |
 | `dump_context` | `main.py` | Prints the current LLM context JSON. |
 | `search_clipboard` | `main.py` | Runs Exa reference search for current clipboard text. |
 | `list_actions` | `main.py` | Lists concrete backend actions available in this build. |
@@ -44,6 +45,28 @@ This reference tracks the active backend only. Removed dashboards, tray code, an
 | `_optional_list` | `core/actions.py` | Normalizes optional CLI list values. |
 | `_event_action_result` | `core/actions.py` | Builds a common result for capture actions. |
 
+## Bubble Action Routing
+
+| Method | Reference | Purpose |
+| --- | --- | --- |
+| `get_bubble_action_ids` | `core/action_router.py` | Selects deterministic semantic bubble action ids from classified context. |
+| `get_bubble_actions` | `core/action_router.py` | Returns full bubble action definitions with backend action ids. |
+
+## Context Analysis
+
+| Method | Reference | Purpose |
+| --- | --- | --- |
+| `Entity.to_dict` | `core/context_engine.py` | Serializes one extracted semantic entity. |
+| `ContextResult.to_dict` | `core/context_engine.py` | Serializes one clipboard context classification. |
+| `analyze_event_locally` | `core/context_engine.py` | Builds a local context result from a captured event. |
+| `analyze_clipboard_locally` | `core/context_engine.py` | Classifies clipboard text with deterministic local heuristics. |
+| `context_result_from_dict` | `core/context_engine.py` | Normalizes OpenRouter JSON into a `ContextResult`. |
+| `_canonical_content_type` | `core/context_engine.py` | Maps backend content types to bubble routing types. |
+| `_infer_intent` | `core/context_engine.py` | Infers the likely user intent from text and window context. |
+| `_infer_domain` | `core/context_engine.py` | Infers the broad work domain. |
+| `_make_summary` | `core/context_engine.py` | Creates a concise bubble-ready summary. |
+| `_extract_entities` | `core/context_engine.py` | Extracts local URLs, errors, dates, and file names. |
+
 ## Agent Service
 
 | Method | Reference | Purpose |
@@ -52,6 +75,7 @@ This reference tracks the active backend only. Removed dashboards, tray code, an
 | `_utc_now` | `apps/agent.py` | Creates UTC timestamps. |
 | `ContextClipAgent.__init__` | `apps/agent.py` | Wires storage, graph, memory, capture, privacy, and plugins. |
 | `ContextClipAgent.start` | `apps/agent.py` | Starts the global clipboard listener loop. |
+| `ContextClipAgent.start_background` | `apps/agent.py` | Starts the listener without taking over the main thread. |
 | `ContextClipAgent.stop` | `apps/agent.py` | Stops the clipboard listener loop. |
 | `ContextClipAgent._handle_copy` | `apps/agent.py` | Captures a copy event, screenshot, plugin context, graph state, and rolling memory. |
 | `ContextClipAgent._handle_paste` | `apps/agent.py` | Captures a paste event, destination screenshot, source correlation, plugin context, and graph edge. |
@@ -102,6 +126,29 @@ This reference tracks the active backend only. Removed dashboards, tray code, an
 | `ClipboardListener._on_release` | `core/capture.py` | Tracks Ctrl key release state. |
 | `ClipboardListener.start` | `core/capture.py` | Starts keyboard listening. |
 | `ClipboardListener.stop` | `core/capture.py` | Stops keyboard listening. |
+| `get_cursor_position` | `core/capture.py` | Reads current cursor coordinates for bubble placement. |
+
+## Desktop Bubble
+
+| Method | Reference | Purpose |
+| --- | --- | --- |
+| `ContextBubble.__init__` | `apps/bubble.py` | Creates a native Tkinter bubble controller. |
+| `ContextBubble.show` | `apps/bubble.py` | Shows or updates the bubble near a screen anchor. |
+| `ContextBubble.hide` | `apps/bubble.py` | Dismisses the active bubble. |
+| `ContextBubble._fade_in` | `apps/bubble.py` | Animates the bubble into view. |
+| `ContextBubble._position` | `apps/bubble.py` | Clamps bubble placement to the visible screen. |
+| `ContextClipBubbleApp.__init__` | `apps/bubble_runtime.py` | Wires Tkinter, the agent, and backend action broker. |
+| `ContextClipBubbleApp.start` | `apps/bubble_runtime.py` | Starts listener and Tkinter main loop. |
+| `ContextClipBubbleApp.stop` | `apps/bubble_runtime.py` | Stops agent and closes the bubble runtime. |
+| `ContextClipBubbleApp._on_event` | `apps/bubble_runtime.py` | Queues copy events for UI-thread handling. |
+| `ContextClipBubbleApp._drain_queue` | `apps/bubble_runtime.py` | Moves event, analysis, and action results onto the UI thread. |
+| `ContextClipBubbleApp._show_analyzing` | `apps/bubble_runtime.py` | Shows immediate feedback after copy capture. |
+| `ContextClipBubbleApp._analyze_in_background` | `apps/bubble_runtime.py` | Runs OpenRouter or local analysis off the UI thread. |
+| `ContextClipBubbleApp._show_analysis` | `apps/bubble_runtime.py` | Displays routed action buttons in the bubble. |
+| `ContextClipBubbleApp._run_action_async` | `apps/bubble_runtime.py` | Runs clicked backend actions in a worker thread. |
+| `ContextClipBubbleApp._show_action_result` | `apps/bubble_runtime.py` | Displays the action result and optional copy-result button. |
+| `_anchor_from_event` | `apps/bubble_runtime.py` | Reads event cursor metadata for placement. |
+| `_result_text` | `apps/bubble_runtime.py` | Extracts display text from action results. |
 
 ## Privacy
 
@@ -160,6 +207,12 @@ This reference tracks the active backend only. Removed dashboards, tray code, an
 | `_openrouter_compress` | `cloud/compressor.py` | Calls OpenRouter using the OpenAI-compatible client. |
 | `_heuristic_compress` | `cloud/compressor.py` | Creates a local context block when cloud compression is unavailable. |
 | `_build_block` | `cloud/compressor.py` | Builds the final `ContextBlock` object. |
+| `openrouter_model` | `cloud/openrouter.py` | Resolves model settings for OpenRouter calls. |
+| `build_openrouter_client` | `cloud/openrouter.py` | Builds the OpenAI-compatible OpenRouter client. |
+| `analyze_event_context` | `cloud/clipboard_analyzer.py` | Classifies captured copy events for bubble routing. |
+| `analyze_clipboard_with_openrouter` | `cloud/clipboard_analyzer.py` | Uses OpenRouter to classify clipboard text and window context. |
+| `run_clipboard_ai_action` | `cloud/clipboard_actions.py` | Runs OpenRouter actions against current clipboard text. |
+| `open_clipboard_url` | `cloud/clipboard_actions.py` | Opens a copied URL in the default browser. |
 | `_short_time` | `cloud/toon.py` | Formats TOON timestamps. |
 | `_short_app` | `cloud/toon.py` | Compacts app family labels for TOON. |
 | `_short_hash` | `cloud/toon.py` | Compacts payload hashes. |

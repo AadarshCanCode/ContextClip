@@ -61,6 +61,13 @@ class BackendActionBroker:
             "context.copy_markdown": self._copy_markdown,
             "graph.summary": self._graph_summary,
             "references.search_clipboard": self._search_clipboard_references,
+            "ai.explain_clipboard": self._ai_explain_clipboard,
+            "ai.summarize_clipboard": self._ai_summarize_clipboard,
+            "ai.help_fix_clipboard": self._ai_help_fix_clipboard,
+            "ai.extract_information": self._ai_extract_information,
+            "ai.draft_reply": self._ai_draft_reply,
+            "ai.adapt_code": self._ai_adapt_code,
+            "system.open_clipboard_url": self._open_clipboard_url,
             "capture.record_clipboard_copy": self._record_clipboard_copy,
             "capture.record_clipboard_paste": self._record_clipboard_paste,
         }
@@ -97,6 +104,49 @@ class BackendActionBroker:
                 name="Search clipboard references",
                 description="Search web references for current clipboard text through Exa.",
                 requires=["clipboard_read", "EXA_API_KEY", "network"],
+            ),
+            BackendActionDescriptor(
+                id="ai.explain_clipboard",
+                name="Explain clipboard",
+                description="Use OpenRouter to explain the current clipboard text.",
+                requires=["clipboard_read", "OPENROUTER_API_KEY", "network"],
+            ),
+            BackendActionDescriptor(
+                id="ai.summarize_clipboard",
+                name="Summarize clipboard",
+                description="Use OpenRouter to summarize the current clipboard text.",
+                requires=["clipboard_read", "OPENROUTER_API_KEY", "network"],
+            ),
+            BackendActionDescriptor(
+                id="ai.help_fix_clipboard",
+                name="Help fix clipboard issue",
+                description="Use OpenRouter to troubleshoot copied error or code text.",
+                requires=["clipboard_read", "OPENROUTER_API_KEY", "network"],
+            ),
+            BackendActionDescriptor(
+                id="ai.extract_information",
+                name="Extract clipboard information",
+                description="Use OpenRouter to extract entities, dates, tasks, URLs, and decisions.",
+                requires=["clipboard_read", "OPENROUTER_API_KEY", "network"],
+            ),
+            BackendActionDescriptor(
+                id="ai.draft_reply",
+                name="Draft reply",
+                description="Use OpenRouter to draft a reply to copied message text.",
+                requires=["clipboard_read", "OPENROUTER_API_KEY", "network"],
+            ),
+            BackendActionDescriptor(
+                id="ai.adapt_code",
+                name="Adapt copied code",
+                description="Use OpenRouter to explain how copied code could fit a nearby project.",
+                requires=["clipboard_read", "OPENROUTER_API_KEY", "network"],
+            ),
+            BackendActionDescriptor(
+                id="system.open_clipboard_url",
+                name="Open clipboard URL",
+                description="Open a copied HTTP or HTTPS URL in the default browser.",
+                requires=["clipboard_read", "default_browser"],
+                mutates=True,
             ),
             BackendActionDescriptor(
                 id="capture.record_clipboard_copy",
@@ -198,6 +248,60 @@ class BackendActionBroker:
             success=True,
             message=f"Exa returned {len(result.results)} reference result(s).",
             data=result.to_dict(),
+        )
+
+    def _ai_explain_clipboard(self, **_: Any) -> BackendActionResult:
+        return self._run_ai_clipboard_action("ai.explain_clipboard", "explain")
+
+    def _ai_summarize_clipboard(self, **_: Any) -> BackendActionResult:
+        return self._run_ai_clipboard_action("ai.summarize_clipboard", "summarize")
+
+    def _ai_help_fix_clipboard(self, **_: Any) -> BackendActionResult:
+        return self._run_ai_clipboard_action("ai.help_fix_clipboard", "help_fix")
+
+    def _ai_extract_information(self, **_: Any) -> BackendActionResult:
+        return self._run_ai_clipboard_action("ai.extract_information", "extract_information")
+
+    def _ai_draft_reply(self, **_: Any) -> BackendActionResult:
+        return self._run_ai_clipboard_action("ai.draft_reply", "draft_reply")
+
+    def _ai_adapt_code(self, **_: Any) -> BackendActionResult:
+        return self._run_ai_clipboard_action("ai.adapt_code", "adapt_code")
+
+    def _run_ai_clipboard_action(self, backend_action_id: str, action_name: str) -> BackendActionResult:
+        from cloud.clipboard_actions import run_clipboard_ai_action
+
+        try:
+            data = run_clipboard_ai_action(action_name)
+        except Exception as exc:
+            return BackendActionResult(
+                action_id=backend_action_id,
+                success=False,
+                message=f"OpenRouter action unavailable: {exc}",
+            )
+        return BackendActionResult(
+            action_id=backend_action_id,
+            success=True,
+            message="OpenRouter clipboard action completed.",
+            data=data,
+        )
+
+    def _open_clipboard_url(self, **_: Any) -> BackendActionResult:
+        from cloud.clipboard_actions import open_clipboard_url
+
+        try:
+            data = open_clipboard_url()
+        except Exception as exc:
+            return BackendActionResult(
+                action_id="system.open_clipboard_url",
+                success=False,
+                message=f"Open URL action unavailable: {exc}",
+            )
+        return BackendActionResult(
+            action_id="system.open_clipboard_url",
+            success=True,
+            message="Clipboard URL opened.",
+            data=data,
         )
 
     def _record_clipboard_copy(self, **_: Any) -> BackendActionResult:

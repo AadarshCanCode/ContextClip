@@ -28,6 +28,7 @@ from core.capture import (
     ClipboardListener,
     ScreenshotCapture,
     build_clipboard_payload,
+    get_cursor_position,
     get_foreground_window,
     read_clipboard,
 )
@@ -136,6 +137,16 @@ class ContextClipAgent:
     # -----------------------------------------------------------------------
 
     def start(self) -> None:
+        self.start_background()
+
+        try:
+            while self._running:
+                time.sleep(0.25)
+        except KeyboardInterrupt:
+            self.stop()
+
+    def start_background(self) -> None:
+        """Start the clipboard listener without taking over the main thread."""
         if self._running:
             return
         self._running = True
@@ -143,12 +154,6 @@ class ContextClipAgent:
         print("[Agent] ContextClip Agent started.")
         print(f"[Agent] Data directory: {self._data_dir.resolve()}")
         print("[Agent] Watching global Ctrl+C / Ctrl+V. Press Ctrl+C here to stop.\n")
-
-        try:
-            while self._running:
-                time.sleep(0.25)
-        except KeyboardInterrupt:
-            self.stop()
 
     def stop(self) -> None:
         self._running = False
@@ -243,6 +248,7 @@ class ContextClipAgent:
 
     def _handle_paste(self) -> Optional[Event]:
         window = get_foreground_window()
+        cursor_position = get_cursor_position()
 
         # Exclusion check
         if self._exclusion.is_excluded(window.app_family, window.process_name, window.window_title):
@@ -295,6 +301,13 @@ class ContextClipAgent:
                         break
                 except Exception as exc:
                     print(f"[Agent] Plugin {plugin.manifest.id} error: {exc}")
+
+        if cursor_position:
+            x, y = cursor_position
+            event.plugin_context = {
+                **(event.plugin_context or {}),
+                "capture": {"cursor_position": {"x": x, "y": y}},
+            }
 
         self._event_repo.insert(event)
         self._graph.record_paste(event, source_id)

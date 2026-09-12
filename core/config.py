@@ -18,6 +18,8 @@ DEFAULT_ENV_PATH = PROJECT_ROOT / ".env"
 
 def load_env_file(path: Optional[Path] = None, override: bool = False) -> dict[str, str]:
     """Load KEY=VALUE pairs from .env into os.environ."""
+    if path is None and os.environ.get("CONTEXTCLIP_DISABLE_DOTENV") == "1":
+        return {}
     env_path = path or DEFAULT_ENV_PATH
     loaded: dict[str, str] = {}
     if not env_path.exists():

@@ -16,7 +16,7 @@ import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable, Optional, Tuple
 
 import pyperclip
 
@@ -139,6 +139,16 @@ def get_foreground_window() -> AppRef:
         )
     except Exception:
         return AppRef(process_name="", app_family="unknown", window_title="")
+
+
+def get_cursor_position() -> Optional[Tuple[int, int]]:
+    """Return the current mouse cursor position in screen coordinates."""
+    if not _WIN32_AVAILABLE:
+        return None
+    try:
+        return win32gui.GetCursorPos()
+    except Exception:
+        return None
 
 
 # ---------------------------------------------------------------------------

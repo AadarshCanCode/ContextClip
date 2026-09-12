@@ -25,6 +25,9 @@ pip-wheel-metadata/
 .coverage.*
 htmlcov/
 
+# Local branch inspection checkouts
+.branch-checkouts/
+
 # Local runtime data
 contextclip_data/*
 !contextclip_data/.gitkeep

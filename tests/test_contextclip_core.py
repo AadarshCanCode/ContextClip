@@ -6,8 +6,12 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+os.environ.setdefault("CONTEXTCLIP_DISABLE_DOTENV", "1")
+
 from core.actions import BackendActionBroker
+from core.action_router import get_bubble_action_ids
 from core.config import load_env_file
+from core.context_engine import analyze_clipboard_locally
 from core.contracts import (
     AppRef,
     ClipboardPayload,
@@ -195,7 +199,7 @@ class ContextClipCoreTests(unittest.TestCase):
                 manager = ContextWindowManager(events, blocks)
 
                 created = None
-                with patch.dict(os.environ, {}, clear=True):
+                with patch.dict(os.environ, {"CONTEXTCLIP_DISABLE_DOTENV": "1"}, clear=True):
                     for idx in range(1, 8):
                         event_type = EventType.COPY if idx % 2 else EventType.PASTE
                         event = _event(
@@ -239,6 +243,7 @@ class ContextClipCoreTests(unittest.TestCase):
 
         self.assertIn("storage.stats", action_ids)
         self.assertIn("references.search_clipboard", action_ids)
+        self.assertIn("ai.explain_clipboard", action_ids)
 
         stats = broker.execute("storage.stats")
         self.assertTrue(stats.success)
@@ -247,6 +252,15 @@ class ContextClipCoreTests(unittest.TestCase):
         search = broker.execute("references.search_clipboard")
         self.assertFalse(search.success)
         self.assertIn("EXA_API_KEY", search.message)
+
+    def test_bubble_router_maps_local_context_to_concrete_actions(self):
+        error_context = analyze_clipboard_locally("ECONNREFUSED 127.0.0.1:5432")
+        url_context = analyze_clipboard_locally("https://docs.exa.ai/reference/search-api-guide-for-coding-agents")
+
+        self.assertEqual(error_context.content_type, "error")
+        self.assertEqual(get_bubble_action_ids(error_context), ["help_fix", "explain", "search_references"])
+        self.assertEqual(url_context.content_type, "url")
+        self.assertEqual(get_bubble_action_ids(url_context), ["open", "summarize", "search_references"])
 
 
 if __name__ == "__main__":

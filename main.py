@@ -2,8 +2,9 @@
 main.py - ContextClip v4 backend entry point.
 
 Usage:
-  python main.py                    -> run clipboard agent service
-  python main.py --agent            -> run clipboard agent service
+  python main.py                    -> run desktop bubble agent
+  python main.py --bubble           -> run desktop bubble agent
+  python main.py --agent            -> run headless clipboard agent service
   python main.py --dump             -> dump current LLM context JSON
   python main.py --list-actions     -> list concrete backend actions
   python main.py --action ACTION_ID -> run one concrete backend action
@@ -32,11 +33,19 @@ def configure_console_io() -> None:
 
 
 def run_agent_only() -> None:
-    """Start the clipboard agent service with no frontend."""
+    """Start the clipboard agent service without the bubble UI."""
     from apps.agent import ContextClipAgent
 
     agent = ContextClipAgent()
     agent.start()
+
+
+def run_desktop_bubble() -> None:
+    """Start the native desktop bubble agent."""
+    from apps.bubble_runtime import ContextClipBubbleApp
+
+    app = ContextClipBubbleApp()
+    app.start()
 
 
 def dump_context() -> None:
@@ -114,9 +123,14 @@ def main() -> None:
         description="ContextClip v4 backend workflow memory agent",
     )
     parser.add_argument(
+        "--bubble",
+        action="store_true",
+        help="Run native desktop bubble agent",
+    )
+    parser.add_argument(
         "--agent",
         action="store_true",
-        help="Run clipboard agent service",
+        help="Run headless clipboard agent service",
     )
     parser.add_argument(
         "--dump",
@@ -166,7 +180,9 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    if args.dump:
+    if args.agent:
+        run_agent_only()
+    elif args.dump:
         dump_context()
     elif args.list_actions:
         list_actions()
@@ -175,7 +191,7 @@ def main() -> None:
     elif args.search_clipboard:
         search_clipboard(args)
     else:
-        run_agent_only()
+        run_desktop_bubble()
 
 
 if __name__ == "__main__":
