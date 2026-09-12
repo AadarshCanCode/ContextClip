@@ -164,6 +164,8 @@ class ContextBubble:
             )
             button.pack(side="left", fill="x", expand=True, padx=(0, 8))
 
+        self.window.deiconify()
+        self.window.update_idletasks()
         self.visible = True
         self._fade_in()
         if self.auto_hide_ms > 0:

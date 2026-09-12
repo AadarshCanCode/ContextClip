@@ -4,7 +4,7 @@ Last updated: 2026-09-12
 
 ## Executive State
 
-ContextClip is currently a backend-first Windows desktop workflow-memory agent. The frontend, tray app, dashboard, and demo seeding path have been removed from the active code path. The usable surface today is the Python CLI in `main.py`, the long-running clipboard agent in `apps/agent.py`, and a concrete backend action broker in `core/actions.py`.
+ContextClip is currently a Windows desktop workflow-memory agent with a native Tkinter copy bubble and a backend CLI. The tray app, web dashboard, and demo seeding path have been removed from the active code path. The usable surface today is the Python CLI in `main.py`, the native bubble runtime in `apps/bubble_runtime.py`, the long-running clipboard agent in `apps/agent.py`, and a concrete backend action broker in `core/actions.py`.
 
 The app is intended to observe meaningful clipboard movement across desktop applications. A copy is stored as an immutable event. A paste is stored as a separate immutable event. The backend then links related events into a reference graph, maintains a seven-event active memory window, creates compressed ContextBlocks, and can export context for LLM usage.
 
@@ -34,7 +34,8 @@ The latest active constraints are:
 - Use OpenRouter through an API key for LLM compression.
 - Use Exa for reference search against clipboard text.
 - Ignore seed/demo behavior completely.
-- Remove frontend/dashboard/tray work for now.
+- Keep the web dashboard and tray removed for now.
+- Merge the bubble branch's copy-time native popup intent into the current architecture.
 - Create and maintain `.env`.
 - Keep the codebase structure clean and understandable.
 - Explore and expose actions the backend can actually perform.
@@ -47,6 +48,7 @@ Supported commands:
 
 ```powershell
 python main.py
+python main.py --bubble
 python main.py --agent
 python main.py --dump
 python main.py --list-actions
@@ -61,7 +63,7 @@ python main.py --search-clipboard --num-results 5
 Removed from active runtime:
 
 - `--demo`
-- dashboard launch
+- web dashboard launch
 - tray launch
 - demo seeding
 - frontend templates and UI files
@@ -75,12 +77,17 @@ Current environment keys:
 ```text
 CONTEXTCLIP_DATA_DIR=./contextclip_data
 CONTEXTCLIP_COPY_SETTLE_MS=120
+CONTEXTCLIP_POLL_CLIPBOARD_MS=250
 CONTEXTCLIP_MAX_CHARS=50000
 CONTEXTCLIP_SCREENSHOT_MODE=active_window
+CONTEXTCLIP_BUBBLE_ANALYZER=openrouter
+CONTEXTCLIP_BUBBLE_AUTO_HIDE_MS=12000
 
 OPENROUTER_API_KEY=
 OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 OPENROUTER_MODEL=openai/gpt-4o-mini
+OPENROUTER_ANALYZER_MODEL=openai/gpt-4o-mini
+OPENROUTER_ACTION_MODEL=openai/gpt-4o-mini
 OPENROUTER_APP_TITLE=ContextClip
 OPENROUTER_SITE_URL=https://contextclip.local
 
@@ -102,14 +109,17 @@ main.py
 apps/agent.py
   Runtime orchestrator and backend API facade
 
+apps/bubble.py and apps/bubble_runtime.py
+  Native desktop bubble UI and runner
+
 core/
-  Domain contracts, capture, privacy, graph, memory, actions, config
+  Domain contracts, capture, privacy, graph, memory, actions, action routing, context analysis, config
 
 storage/
   SQLite schema and repository adapters
 
 cloud/
-  TOON serialization, Markdown export, OpenRouter compression, Exa search
+  TOON serialization, Markdown export, OpenRouter compression, OpenRouter clipboard actions, Exa search
 
 plugins/
   App-specific enrichers for VS Code, browsers, Outlook, Word, terminal
@@ -159,6 +169,29 @@ User presses Ctrl+V
 
 Every seven events, the memory manager closes the current active window and creates a `ContextBlock`.
 
+## Bubble Flow
+
+The native bubble flow is:
+
+```text
+User presses Ctrl+C
+  -> Agent captures and stores copy event
+  -> Copy-time text anchor is stored in event plugin_context
+  -> Bubble runtime receives the copy event through on_event
+  -> Tkinter shows an immediate analyzing bubble near the caret/control anchor
+  -> OpenRouter analyzer classifies copied text when configured
+  -> Local analyzer is used if OpenRouter is disabled, unavailable, or blocked
+  -> Deterministic action router selects up to three buttons
+  -> Button clicks execute BackendActionBroker actions
+  -> Results are printed to terminal and summarized in the bubble
+```
+
+Paste events are still recorded and correlated by the backend, but the desktop bubble runtime now treats paste as a dismissal signal. It hides any active bubble and does not open a new one for paste.
+
+When a bubble action offers "Copy result", the runtime marks that app-written clipboard value as suppressed before copying it. That prevents ContextClip's polling fallback from treating its own action output as a fresh user copy.
+
+This merges the useful intent from `origin/bubble` without adopting its standalone Gemini/polling implementation.
+
 ## ContextBlock Flow
 
 When the active window reaches seven events:
@@ -195,7 +228,7 @@ Current clipboard text
 
 Restricted clipboard content is blocked before Exa receives anything.
 
-Current behavior with empty `.env` key:
+Behavior when `EXA_API_KEY` is missing:
 
 ```text
 python main.py --action references.search_clipboard --num-results 2
@@ -212,7 +245,7 @@ returns a structured failure:
 }
 ```
 
-That is expected until `EXA_API_KEY` is filled.
+That is expected until `EXA_API_KEY` is filled. Live Exa searches read and upload the current clipboard query, so they should be run deliberately.
 
 ## Backend Action Broker
 
@@ -228,6 +261,13 @@ Current actions:
 | `context.copy_markdown` | Yes | Copies active context Markdown to the OS clipboard. |
 | `graph.summary` | No | Returns graph summary text and edge JSON. |
 | `references.search_clipboard` | No | Searches clipboard references through Exa when configured. |
+| `ai.explain_clipboard` | No | Explains current clipboard text through OpenRouter. |
+| `ai.summarize_clipboard` | No | Summarizes current clipboard text through OpenRouter. |
+| `ai.help_fix_clipboard` | No | Troubleshoots copied error or code text through OpenRouter. |
+| `ai.extract_information` | No | Extracts key information from copied text through OpenRouter. |
+| `ai.draft_reply` | No | Drafts a reply to copied message text through OpenRouter. |
+| `ai.adapt_code` | No | Explains how copied code could fit a nearby project through OpenRouter. |
+| `system.open_clipboard_url` | Yes | Opens a copied URL in the default browser. |
 | `capture.record_clipboard_copy` | Yes | Manually captures current clipboard as a copy event. |
 | `capture.record_clipboard_paste` | Yes | Manually captures current clipboard as a paste event. |
 
@@ -293,6 +333,24 @@ Each plugin can:
 
 The `execute()` hooks are still stubs. Real backend execution is currently centralized in `core/actions.py`.
 
+## Bubble Branch Merge State
+
+`origin/bubble` was pulled into a separate ignored worktree at:
+
+```text
+.branch-checkouts/bubble
+```
+
+The branch intent was to show a native contextual bubble immediately after a copy, classify the copied text, and offer actions. That intent is now merged into the main codebase with these substitutions:
+
+- Existing `ContextClipAgent` capture replaced branch clipboard polling.
+- Existing screenshots and app/window metadata replaced branch capture logic.
+- OpenRouter replaced Gemini.
+- `BackendActionBroker` replaced printed action stubs.
+- Cursor-anchored placement replaced fixed bottom-right placement.
+
+Detailed notes are in `docs/bubble_branch_merge.md`.
+
 ## Current File Condition
 
 Active source files:
@@ -300,18 +358,25 @@ Active source files:
 ```text
 main.py
 apps/agent.py
+apps/bubble.py
+apps/bubble_runtime.py
 core/actions.py
+core/action_router.py
 core/capture.py
 core/config.py
 core/contracts.py
+core/context_engine.py
 core/graph.py
 core/memory.py
 core/privacy.py
 storage/database.py
 storage/repositories.py
+cloud/clipboard_actions.py
+cloud/clipboard_analyzer.py
 cloud/compressor.py
 cloud/exa_search.py
 cloud/markdown_export.py
+cloud/openrouter.py
 cloud/toon.py
 plugins/base.py
 plugins/browser.py
@@ -321,6 +386,7 @@ plugins/vscode.py
 plugins/word.py
 tests/test_contextclip_core.py
 docs/backend_methods.md
+docs/bubble_branch_merge.md
 docs/current_progress.md
 ```
 
@@ -353,7 +419,7 @@ python main.py --action context.export_markdown
 python main.py --action context.dump_llm_context
 ```
 
-The Exa paths were also tried. They correctly fail with a missing key until `EXA_API_KEY` is set:
+The Exa missing-key paths were tested earlier. Live Exa and OpenRouter clipboard actions were not re-run after keys were added, because those commands would upload the current clipboard text:
 
 ```powershell
 python main.py --action references.search_clipboard --num-results 2
@@ -386,7 +452,8 @@ This is a clean usable state, not a seeded demo state.
 The backend is usable, but several parts are still not complete product behavior:
 
 - No packaged desktop installer or Windows service runner yet.
-- No frontend, tray, or local UI right now by user request.
+- No web dashboard or tray UI right now by user request.
+- Native bubble UI exists, but has not been manually clicked through in this Codex run because that requires an interactive desktop copy/action flow.
 - Plugin `execute()` methods are stubs.
 - Manual capture actions can work, but they have side effects and need deliberate use.
 - Exa cannot return real references until `EXA_API_KEY` is set.
@@ -399,7 +466,7 @@ The backend is usable, but several parts are still not complete product behavior
 ## Near-Term Recommended Build Path
 
 1. Fill `.env` with real `OPENROUTER_API_KEY` and `EXA_API_KEY`.
-2. Run `python main.py --agent` and perform normal copy/paste actions across desktop apps.
+2. Run `python main.py` and perform normal copy/paste actions across desktop apps.
 3. Use `python main.py --action storage.stats` to confirm events are being captured.
 4. Use `python main.py --action graph.summary` to inspect correlation.
 5. Use `python main.py --action context.export_markdown` to inspect active LLM context.
@@ -413,7 +480,8 @@ The clean direction is:
 - Keep `core/` as domain logic.
 - Keep `storage/` as the database boundary.
 - Keep `cloud/` as explicit cloud integrations.
-- Keep `apps/agent.py` as the runtime orchestrator.
+- Keep `apps/agent.py` as the capture/runtime orchestrator.
+- Keep `apps/bubble_runtime.py` as the desktop interaction runner.
 - Keep `core/actions.py` as the actual command/action execution surface.
 - Keep plugins as enrichers until their execution hooks are made real.
 - Avoid reintroducing demo or seed behavior into the active path.

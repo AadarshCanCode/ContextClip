@@ -206,7 +206,7 @@ class ScreenshotRepository:
     def _conn(self):
         return get_connection(self._db)
 
-    def insert(self, ref: ScreenshotRef) -> None:
+    def insert(self, ref: ScreenshotRef) -> ScreenshotRef:
         conn = self._conn()
         conn.execute(
             """
@@ -216,6 +216,7 @@ class ScreenshotRepository:
             (ref.id, ref.sha256, ref.local_path, ref.width, ref.height, ref.created_at, ref.retention_class),
         )
         conn.commit()
+        return self.get_by_id(ref.id) or self.get_by_hash(ref.sha256) or ref
 
     def get_by_id(self, screenshot_id: str) -> Optional[ScreenshotRef]:
         row = self._conn().execute(

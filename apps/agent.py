@@ -16,7 +16,7 @@ import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Tuple
 
 # ---------------------------------------------------------------------------
 # Resolve paths so the agent can be run from any working directory
@@ -30,6 +30,7 @@ from core.capture import (
     build_clipboard_payload,
     get_cursor_position,
     get_foreground_window,
+    get_text_anchor_position,
     read_clipboard,
 )
 from core.config import get_int, load_env_file
@@ -38,7 +39,7 @@ from core.contracts import (
 )
 from core.graph import ReferenceGraph
 from core.memory import ContextWindowManager
-from core.privacy import AppExclusionPolicy, classify_content, detect_privacy_class
+from core.privacy import AppExclusionPolicy, classify_content, detect_privacy_class, normalize_text
 from storage.database import initialize as init_db
 from storage.repositories import (
     ContextBlockRepository,
@@ -65,6 +66,7 @@ DATA_DIR = Path(os.environ.get("CONTEXTCLIP_DATA_DIR", _HERE / "contextclip_data
 DB_PATH = DATA_DIR / "contextclip.db"
 SCREENSHOT_DIR = DATA_DIR / "screenshots"
 COPY_SETTLE_MS = get_int("CONTEXTCLIP_COPY_SETTLE_MS", 120)
+CLIPBOARD_POLL_MS = get_int("CONTEXTCLIP_POLL_CLIPBOARD_MS", 250)
 
 
 def _new_event_id() -> str:
@@ -73,6 +75,19 @@ def _new_event_id() -> str:
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _merge_capture_position(event: Event, key: str, position: Tuple[int, int]) -> None:
+    context = event.plugin_context if isinstance(event.plugin_context, dict) else {}
+    capture_context = context.get("capture") if isinstance(context.get("capture"), dict) else {}
+    x, y = position
+    event.plugin_context = {
+        **context,
+        "capture": {
+            **capture_context,
+            key: {"x": x, "y": y},
+        },
+    }
 
 
 class ContextClipAgent:
@@ -121,10 +136,13 @@ class ContextClipAgent:
 
         # State
         self._last_recorded_hash: Optional[str] = None
+        self._last_seen_clipboard_hash: Optional[str] = None
+        self._suppressed_clipboard_hashes: set[str] = set()
         self._last_copy_time: float = 0.0
         self._current_workflow_id: Optional[str] = self._new_workflow_id()
         self._running = False
         self._lock = threading.RLock()
+        self._poll_thread: Optional[threading.Thread] = None
 
         # Clipboard listener
         self._listener = ClipboardListener(
@@ -151,6 +169,7 @@ class ContextClipAgent:
             return
         self._running = True
         self._listener.start()
+        self._start_clipboard_polling()
         print("[Agent] ContextClip Agent started.")
         print(f"[Agent] Data directory: {self._data_dir.resolve()}")
         print("[Agent] Watching global Ctrl+C / Ctrl+V. Press Ctrl+C here to stop.\n")
@@ -160,12 +179,59 @@ class ContextClipAgent:
         self._listener.stop()
         print("[Agent] Stopped.")
 
+    def _start_clipboard_polling(self) -> None:
+        """Start clipboard-change polling as a fallback to key-event capture."""
+        if CLIPBOARD_POLL_MS <= 0:
+            return
+        current_text = read_clipboard()
+        self._last_seen_clipboard_hash = self._hash_seen_clipboard(current_text)
+        self._poll_thread = threading.Thread(
+            target=self._poll_clipboard_loop,
+            daemon=True,
+        )
+        self._poll_thread.start()
+
+    def _poll_clipboard_loop(self) -> None:
+        interval = max(CLIPBOARD_POLL_MS, 50) / 1000.0
+        while self._running:
+            time.sleep(interval)
+            text = read_clipboard()
+            payload_hash = self._hash_seen_clipboard(text)
+            if not payload_hash:
+                continue
+            with self._lock:
+                if payload_hash in self._suppressed_clipboard_hashes:
+                    self._suppressed_clipboard_hashes.discard(payload_hash)
+                    self._last_seen_clipboard_hash = payload_hash
+                    continue
+                if payload_hash == self._last_seen_clipboard_hash:
+                    continue
+                self._last_seen_clipboard_hash = payload_hash
+            self._handle_copy(skip_settle=True)
+
+    @staticmethod
+    def _hash_seen_clipboard(text: str) -> Optional[str]:
+        normalized = normalize_text(text)
+        if not normalized:
+            return None
+        return build_clipboard_payload(normalized).payload_hash
+
+    def suppress_clipboard_text(self, text: str) -> None:
+        """Prevent ContextClip-owned clipboard writes from reopening the bubble."""
+        payload_hash = self._hash_seen_clipboard(text)
+        if not payload_hash:
+            return
+        with self._lock:
+            self._suppressed_clipboard_hashes.add(payload_hash)
+            self._last_seen_clipboard_hash = payload_hash
+
     # -----------------------------------------------------------------------
     # Copy handler
     # -----------------------------------------------------------------------
 
-    def _handle_copy(self) -> Optional[Event]:
-        time.sleep(COPY_SETTLE_MS / 1000.0)
+    def _handle_copy(self, skip_settle: bool = False) -> Optional[Event]:
+        if not skip_settle:
+            time.sleep(COPY_SETTLE_MS / 1000.0)
 
         text = read_clipboard()
         if not text.strip():
@@ -185,6 +251,7 @@ class ContextClipAgent:
             self._last_copy_time = now
 
         window = get_foreground_window()
+        anchor_position = get_text_anchor_position(window)
 
         # Exclusion check
         if self._exclusion.is_excluded(window.app_family, window.process_name, window.window_title):
@@ -203,7 +270,7 @@ class ContextClipAgent:
         event_id = _new_event_id()
         screenshot_ref = self._screenshot_capture.capture(window, event_id)
         if screenshot_ref:
-            self._screenshot_repo.insert(screenshot_ref)
+            screenshot_ref = self._screenshot_repo.insert(screenshot_ref)
 
         # Build and persist event
         seq = self._event_repo.next_seq()
@@ -231,6 +298,9 @@ class ContextClipAgent:
                         break
                 except Exception as exc:
                     print(f"[Agent] Plugin {plugin.manifest.id} error: {exc}")
+
+        if anchor_position:
+            _merge_capture_position(event, "anchor_position", anchor_position)
 
         self._event_repo.insert(event)
         self._graph.record_copy(event)
@@ -260,13 +330,15 @@ class ContextClipAgent:
             return None
 
         clipboard = build_clipboard_payload(text)
+        with self._lock:
+            self._last_seen_clipboard_hash = clipboard.payload_hash
         content_type = classify_content(text)
         privacy = detect_privacy_class(text)
 
         event_id = _new_event_id()
         screenshot_ref = self._screenshot_capture.capture(window, event_id)
         if screenshot_ref:
-            self._screenshot_repo.insert(screenshot_ref)
+            screenshot_ref = self._screenshot_repo.insert(screenshot_ref)
 
         seq = self._event_repo.next_seq()
 
@@ -303,11 +375,7 @@ class ContextClipAgent:
                     print(f"[Agent] Plugin {plugin.manifest.id} error: {exc}")
 
         if cursor_position:
-            x, y = cursor_position
-            event.plugin_context = {
-                **(event.plugin_context or {}),
-                "capture": {"cursor_position": {"x": x, "y": y}},
-            }
+            _merge_capture_position(event, "cursor_position", cursor_position)
 
         self._event_repo.insert(event)
         self._graph.record_paste(event, source_id)

@@ -1,6 +1,6 @@
 # ContextClip Backend Method Reference
 
-This reference tracks the active backend only. Removed dashboards, tray code, and frontend modules are intentionally excluded.
+This reference tracks the active desktop backend and native bubble only. Removed dashboards, tray code, and web frontend modules are intentionally excluded.
 
 ## Entry Point
 
@@ -40,6 +40,14 @@ This reference tracks the active backend only. Removed dashboards, tray code, an
 | `BackendActionBroker._copy_markdown` | `core/actions.py` | Copies active context Markdown to the OS clipboard. |
 | `BackendActionBroker._graph_summary` | `core/actions.py` | Reads graph edges and a text graph summary. |
 | `BackendActionBroker._search_clipboard_references` | `core/actions.py` | Runs Exa clipboard reference search when configured. |
+| `BackendActionBroker._ai_explain_clipboard` | `core/actions.py` | Runs the OpenRouter explain action for clipboard text. |
+| `BackendActionBroker._ai_summarize_clipboard` | `core/actions.py` | Runs the OpenRouter summarize action for clipboard text. |
+| `BackendActionBroker._ai_help_fix_clipboard` | `core/actions.py` | Runs the OpenRouter troubleshoot/fix action for clipboard text. |
+| `BackendActionBroker._ai_extract_information` | `core/actions.py` | Runs the OpenRouter information extraction action. |
+| `BackendActionBroker._ai_draft_reply` | `core/actions.py` | Runs the OpenRouter draft-reply action. |
+| `BackendActionBroker._ai_adapt_code` | `core/actions.py` | Runs the OpenRouter adapt-code action. |
+| `BackendActionBroker._run_ai_clipboard_action` | `core/actions.py` | Shared OpenRouter action handler. |
+| `BackendActionBroker._open_clipboard_url` | `core/actions.py` | Opens a copied URL through the OS default browser. |
 | `BackendActionBroker._record_clipboard_copy` | `core/actions.py` | Manually records the current clipboard as a copy event. |
 | `BackendActionBroker._record_clipboard_paste` | `core/actions.py` | Manually records the current clipboard as a paste event. |
 | `_optional_list` | `core/actions.py` | Normalizes optional CLI list values. |
@@ -73,10 +81,15 @@ This reference tracks the active backend only. Removed dashboards, tray code, an
 | --- | --- | --- |
 | `_new_event_id` | `apps/agent.py` | Creates event IDs. |
 | `_utc_now` | `apps/agent.py` | Creates UTC timestamps. |
+| `_merge_capture_position` | `apps/agent.py` | Merges cursor/caret coordinates into event capture metadata. |
 | `ContextClipAgent.__init__` | `apps/agent.py` | Wires storage, graph, memory, capture, privacy, and plugins. |
 | `ContextClipAgent.start` | `apps/agent.py` | Starts the global clipboard listener loop. |
 | `ContextClipAgent.start_background` | `apps/agent.py` | Starts the listener without taking over the main thread. |
 | `ContextClipAgent.stop` | `apps/agent.py` | Stops the clipboard listener loop. |
+| `ContextClipAgent._start_clipboard_polling` | `apps/agent.py` | Starts clipboard-change polling as a fallback capture path. |
+| `ContextClipAgent._poll_clipboard_loop` | `apps/agent.py` | Detects changed clipboard payloads and records them as copy events. |
+| `ContextClipAgent._hash_seen_clipboard` | `apps/agent.py` | Hashes normalized clipboard text for polling and suppression. |
+| `ContextClipAgent.suppress_clipboard_text` | `apps/agent.py` | Suppresses app-written clipboard text so the bubble does not reopen itself. |
 | `ContextClipAgent._handle_copy` | `apps/agent.py` | Captures a copy event, screenshot, plugin context, graph state, and rolling memory. |
 | `ContextClipAgent._handle_paste` | `apps/agent.py` | Captures a paste event, destination screenshot, source correlation, plugin context, and graph edge. |
 | `ContextClipAgent._on_context_window_ready` | `apps/agent.py` | Handles completed seven-event windows and workflow rotation. |
@@ -119,6 +132,7 @@ This reference tracks the active backend only. Removed dashboards, tray code, an
 | `get_foreground_window` | `core/capture.py` | Reads the current foreground Windows app context. |
 | `read_clipboard` | `core/capture.py` | Reads text from the OS clipboard. |
 | `build_clipboard_payload` | `core/capture.py` | Normalizes clipboard text into a hashable payload. |
+| `get_text_anchor_position` | `core/capture.py` | Reads the active caret/focused-control location for copy bubble placement, falling back to cursor position. |
 | `ScreenshotCapture.__init__` | `core/capture.py` | Prepares screenshot blob storage. |
 | `ScreenshotCapture.capture` | `core/capture.py` | Captures an event-scoped screenshot. |
 | `ClipboardListener.__init__` | `core/capture.py` | Configures copy and paste callbacks. |
@@ -126,7 +140,7 @@ This reference tracks the active backend only. Removed dashboards, tray code, an
 | `ClipboardListener._on_release` | `core/capture.py` | Tracks Ctrl key release state. |
 | `ClipboardListener.start` | `core/capture.py` | Starts keyboard listening. |
 | `ClipboardListener.stop` | `core/capture.py` | Stops keyboard listening. |
-| `get_cursor_position` | `core/capture.py` | Reads current cursor coordinates for bubble placement. |
+| `get_cursor_position` | `core/capture.py` | Reads current cursor coordinates for fallback placement and paste metadata. |
 
 ## Desktop Bubble
 
@@ -140,14 +154,15 @@ This reference tracks the active backend only. Removed dashboards, tray code, an
 | `ContextClipBubbleApp.__init__` | `apps/bubble_runtime.py` | Wires Tkinter, the agent, and backend action broker. |
 | `ContextClipBubbleApp.start` | `apps/bubble_runtime.py` | Starts listener and Tkinter main loop. |
 | `ContextClipBubbleApp.stop` | `apps/bubble_runtime.py` | Stops agent and closes the bubble runtime. |
-| `ContextClipBubbleApp._on_event` | `apps/bubble_runtime.py` | Queues copy events for UI-thread handling. |
-| `ContextClipBubbleApp._drain_queue` | `apps/bubble_runtime.py` | Moves event, analysis, and action results onto the UI thread. |
+| `ContextClipBubbleApp._on_event` | `apps/bubble_runtime.py` | Queues copy events for UI-thread handling and hides the bubble on paste events. |
+| `ContextClipBubbleApp._drain_queue` | `apps/bubble_runtime.py` | Moves event, hide, analysis, and action results onto the UI thread. |
 | `ContextClipBubbleApp._show_analyzing` | `apps/bubble_runtime.py` | Shows immediate feedback after copy capture. |
 | `ContextClipBubbleApp._analyze_in_background` | `apps/bubble_runtime.py` | Runs OpenRouter or local analysis off the UI thread. |
 | `ContextClipBubbleApp._show_analysis` | `apps/bubble_runtime.py` | Displays routed action buttons in the bubble. |
 | `ContextClipBubbleApp._run_action_async` | `apps/bubble_runtime.py` | Runs clicked backend actions in a worker thread. |
 | `ContextClipBubbleApp._show_action_result` | `apps/bubble_runtime.py` | Displays the action result and optional copy-result button. |
-| `_anchor_from_event` | `apps/bubble_runtime.py` | Reads event cursor metadata for placement. |
+| `ContextClipBubbleApp._copy_result_text` | `apps/bubble_runtime.py` | Copies action output without reopening the bubble from polling. |
+| `_anchor_from_event` | `apps/bubble_runtime.py` | Reads event anchor/cursor metadata for placement. |
 | `_result_text` | `apps/bubble_runtime.py` | Extracts display text from action results. |
 
 ## Privacy
@@ -313,4 +328,4 @@ This reference tracks the active backend only. Removed dashboards, tray code, an
 
 ## Excluded From Active Backend
 
-`contextclip.py` remains a legacy prototype. Frontend surfaces are not part of the active CLI path.
+`contextclip.py` remains a legacy prototype. The web dashboard and tray surfaces are not part of the active CLI path.

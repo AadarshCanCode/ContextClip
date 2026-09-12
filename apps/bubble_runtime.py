@@ -59,6 +59,9 @@ class ContextClipBubbleApp:
             pass
 
     def _on_event(self, event: Event) -> None:
+        if event.type == EventType.PASTE:
+            self.queue.put(("hide", None))
+            return
         if event.type != EventType.COPY:
             return
         self.queue.put(("event", event))
@@ -78,6 +81,8 @@ class ContextClipBubbleApp:
             elif kind == "action_result":
                 action, result, anchor = payload
                 self._show_action_result(action, result, anchor)
+            elif kind == "hide":
+                self.bubble.hide()
 
         if self.running:
             self.root.after(80, self._drain_queue)
@@ -162,7 +167,7 @@ class ContextClipBubbleApp:
         text = _result_text(result)
         buttons = [("Close", self.bubble.hide)]
         if text:
-            buttons.insert(0, ("Copy result", lambda: pyperclip.copy(text)))
+            buttons.insert(0, ("Copy result", lambda: self._copy_result_text(text)))
 
         self.bubble.show(
             title="Action complete" if result.success else "Action unavailable",
@@ -178,11 +183,17 @@ class ContextClipBubbleApp:
                 return f"Related to event {edge.from_event_id[:8]} ({edge.relation.value})"
         return None
 
+    def _copy_result_text(self, text: str) -> None:
+        self.agent.suppress_clipboard_text(text)
+        pyperclip.copy(text)
+
 
 def _anchor_from_event(event: Event) -> Optional[Tuple[int, int]]:
     context = event.plugin_context or {}
     capture = context.get("capture") if isinstance(context, dict) else None
-    position = capture.get("cursor_position") if isinstance(capture, dict) else None
+    position = None
+    if isinstance(capture, dict):
+        position = capture.get("anchor_position") or capture.get("cursor_position")
     if not isinstance(position, dict):
         return None
     try:

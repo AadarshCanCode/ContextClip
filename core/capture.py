@@ -10,6 +10,8 @@ Design:
 from __future__ import annotations
 
 import hashlib
+import ctypes
+import ctypes.wintypes
 import os
 import threading
 import time
@@ -34,6 +36,29 @@ except ImportError:
     win32gui = None
     win32process = None
     _WIN32_AVAILABLE = False
+
+
+class _RECT(ctypes.Structure):
+    _fields_ = [
+        ("left", ctypes.c_long),
+        ("top", ctypes.c_long),
+        ("right", ctypes.c_long),
+        ("bottom", ctypes.c_long),
+    ]
+
+
+class _GUITHREADINFO(ctypes.Structure):
+    _fields_ = [
+        ("cbSize", ctypes.c_ulong),
+        ("flags", ctypes.c_ulong),
+        ("hwndActive", ctypes.c_void_p),
+        ("hwndFocus", ctypes.c_void_p),
+        ("hwndCapture", ctypes.c_void_p),
+        ("hwndMenuOwner", ctypes.c_void_p),
+        ("hwndMoveSize", ctypes.c_void_p),
+        ("hwndCaret", ctypes.c_void_p),
+        ("rcCaret", _RECT),
+    ]
 
 try:
     import psutil
@@ -149,6 +174,38 @@ def get_cursor_position() -> Optional[Tuple[int, int]]:
         return win32gui.GetCursorPos()
     except Exception:
         return None
+
+
+def get_text_anchor_position(window: Optional[AppRef] = None) -> Optional[Tuple[int, int]]:
+    """
+    Return the best screen coordinate for showing copy UI near edited text.
+
+    Windows exposes the active caret for many native text controls. Browsers and
+    custom editors are less consistent, so this falls back to the mouse cursor.
+    """
+    if not _WIN32_AVAILABLE:
+        return None
+
+    try:
+        thread_id = 0
+        if window and window.hwnd and win32process is not None:
+            thread_id, _ = win32process.GetWindowThreadProcessId(window.hwnd)
+
+        info = _GUITHREADINFO()
+        info.cbSize = ctypes.sizeof(_GUITHREADINFO)
+        if ctypes.windll.user32.GetGUIThreadInfo(thread_id, ctypes.byref(info)):
+            hwnd = info.hwndCaret or info.hwndFocus
+            if hwnd:
+                x = info.rcCaret.left
+                y = info.rcCaret.bottom or info.rcCaret.top
+                point = ctypes.wintypes.POINT(x, y)
+                if ctypes.windll.user32.ClientToScreen(hwnd, ctypes.byref(point)):
+                    if point.x > 0 and point.y > 0:
+                        return int(point.x), int(point.y)
+    except Exception:
+        pass
+
+    return get_cursor_position()
 
 
 # ---------------------------------------------------------------------------
