@@ -4,6 +4,9 @@ __pycache__/
 .mypy_cache/
 
 .env
+credentials.json
+credential.json
+google_token.json
 .venv/
 venv/
 contextclip_data/

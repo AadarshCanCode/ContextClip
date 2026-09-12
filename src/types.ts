@@ -116,6 +116,13 @@ export type SettingsStatus = {
     search_type: string;
     num_results: number;
   };
+  calendar: {
+    configured: boolean;
+    credential_file: string;
+    token_found: boolean;
+    token_file: string;
+    timezone: string;
+  };
   capture: {
     data_dir: string;
     copy_settle_ms: number;

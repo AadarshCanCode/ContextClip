@@ -28,6 +28,12 @@ openai>=1.0.0
 # Set EXA_API_KEY env var to enable reference search.
 exa-py==2.14.0
 
+# Google Calendar action support
+python-dateutil>=2.9.0
+google-api-python-client>=2.140.0
+google-auth>=2.34.0
+google-auth-oauthlib>=1.2.1
+
 # Local desktop API for the Electron shell
 fastapi>=0.115.0
 uvicorn[standard]>=0.30.0

@@ -97,6 +97,20 @@ class FakeExaClient:
 
 
 class FakeActionAgent:
+    _data_dir = Path(tempfile.gettempdir()) / "contextclip_fake_actions"
+
+    def get_event(self, event_id):
+        return None
+
+    def get_recent_events(self, n=50):
+        return []
+
+    def find_recent_copy_by_hash(self, payload_hash):
+        return None
+
+    def get_screenshot_path(self, screenshot_id):
+        return None
+
     def get_stats(self):
         return {"events_total": 0, "copies": 0, "pastes": 0, "latest_seq": 0}
 
@@ -248,23 +262,59 @@ class ContextClipCoreTests(unittest.TestCase):
         self.assertIn("storage.stats", action_ids)
         self.assertIn("references.search_clipboard", action_ids)
         self.assertIn("ai.explain_clipboard", action_ids)
+        self.assertIn("tasks.add_clipboard", action_ids)
+        self.assertIn("calendar.add_clipboard", action_ids)
+        self.assertIn("context.save_clipboard", action_ids)
 
         stats = broker.execute("storage.stats")
         self.assertTrue(stats.success)
         self.assertEqual(stats.data["stats"]["events_total"], 0)
 
-        search = broker.execute("references.search_clipboard")
+        search = broker.execute("references.search_clipboard", clipboard_text="ERR_CONNECTION_REFUSED 127.0.0.1:5432")
         self.assertFalse(search.success)
         self.assertIn("EXA_API_KEY", search.message)
 
     def test_bubble_router_maps_local_context_to_concrete_actions(self):
         error_context = analyze_clipboard_locally("ECONNREFUSED 127.0.0.1:5432")
         url_context = analyze_clipboard_locally("https://docs.exa.ai/reference/search-api-guide-for-coding-agents")
+        form_context = analyze_clipboard_locally("Please confirm attendance by filling this form https://forms.gle/example")
+        deadline_context = analyze_clipboard_locally("Project review with Prof. Sharma tomorrow at 3 PM")
 
         self.assertEqual(error_context.content_type, "error")
-        self.assertEqual(get_bubble_action_ids(error_context), ["help_fix", "explain", "search_references"])
+        self.assertEqual(get_bubble_action_ids(error_context), ["help_fix", "explain", "find_related_context"])
         self.assertEqual(url_context.content_type, "url")
-        self.assertEqual(get_bubble_action_ids(url_context), ["open", "summarize", "search_references"])
+        self.assertEqual(get_bubble_action_ids(url_context), ["open", "summarize", "save_context"])
+        self.assertEqual(form_context.intent, "follow_instructions")
+        self.assertEqual(get_bubble_action_ids(form_context), ["open", "add_to_tasks", "save_context"])
+        self.assertEqual(deadline_context.intent, "track_deadline")
+        self.assertEqual(get_bubble_action_ids(deadline_context), ["add_to_calendar", "add_to_tasks", "save_context"])
+
+    def test_event_backed_task_calendar_and_related_actions(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            try:
+                events, _edges, _blocks = self._repos(Path(tmp))
+                agent = ContextClipAgent(data_dir=Path(tmp))
+                first = _event("evt_related", 1, EventType.COPY, "outlook", "Project review agenda and notes")
+                second = _event("evt_action", 2, EventType.COPY, "outlook", "Project review with Prof. Sharma tomorrow at 3 PM")
+                events.insert(first)
+                events.insert(second)
+                broker = BackendActionBroker(agent)
+
+                task = broker.execute("tasks.add_clipboard", event_id="evt_action")
+                self.assertTrue(task.success)
+                self.assertTrue((Path(tmp) / "tasks" / "tasks.txt").exists())
+                self.assertIn("Project review", task.data["task"]["title"])
+
+                calendar = broker.execute("calendar.add_clipboard", event_id="evt_action", dry_run=True)
+                self.assertTrue(calendar.success)
+                self.assertEqual(calendar.data["mode"], "dry_run")
+                self.assertIn("event", calendar.data)
+
+                related = broker.execute("context.find_related", event_id="evt_action")
+                self.assertTrue(related.success)
+                self.assertEqual(related.data["related"][0]["event_id"], "evt_related")
+            finally:
+                close_connection()
 
     def test_desktop_api_exposes_health_events_actions_and_settings(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -282,6 +332,14 @@ class ContextClipCoreTests(unittest.TestCase):
                     settings = client.get("/settings/status").json()
                     self.assertIn("openrouter", settings)
                     self.assertIn("exa", settings)
+                    self.assertIn("calendar", settings)
+
+                    task_response = client.post(
+                        "/actions/run",
+                        json={"action_id": "calendar.add_clipboard", "args": {"event_id": "evt_api", "dry_run": True}},
+                    )
+                    self.assertEqual(task_response.status_code, 200)
+                    self.assertTrue(task_response.json()["success"])
             finally:
                 close_connection()
 

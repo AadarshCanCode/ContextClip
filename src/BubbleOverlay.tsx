@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  CalendarPlus,
   CheckSquare,
   ClipboardList,
   ExternalLink,
@@ -25,6 +26,10 @@ const iconByAction: Record<string, typeof Sparkles> = {
   extract_information: CheckSquare,
   open: ExternalLink,
   copy_context: ClipboardList,
+  add_to_calendar: CalendarPlus,
+  add_to_tasks: CheckSquare,
+  save_context: ClipboardList,
+  find_related_context: Search,
 };
 
 export function BubbleOverlay() {
@@ -88,7 +93,7 @@ export function BubbleOverlay() {
   async function execute(actionId: string) {
     setBusyAction(actionId);
     try {
-      setResult(await runBackendAction(actionId));
+      setResult(await runBackendAction(actionId, { event_id: bubble?.event_id }));
     } catch (exc) {
       setResult({
         action_id: actionId,
@@ -110,7 +115,7 @@ export function BubbleOverlay() {
       <section className="context-bubble" role="dialog" aria-label="ContextClip action bubble">
         <header className="bubble-header">
           <div className="bubble-brand">
-            <div className="brand-mark"><ClipboardList size={23} /></div>
+            <div className="brand-mark"><img src="logo" alt="" /></div>
             <div>
               <strong>ContextClip</strong>
               <span>{bubble.phase === "ready" ? bubble.content_type : "Analyzing copy"}</span>

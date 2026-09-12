@@ -409,8 +409,14 @@ class ContextClipAgent:
     def get_active_events(self, n: int = 7):
         return self._memory.get_active_events(n)
 
+    def get_event(self, event_id: str) -> Optional[Event]:
+        return self._event_repo.get_by_id(event_id)
+
     def get_recent_events(self, n: int = 50):
         return self._event_repo.get_recent(n)
+
+    def find_recent_copy_by_hash(self, payload_hash: str) -> Optional[Event]:
+        return self._event_repo.find_recent_copy_by_hash(payload_hash)
 
     def get_context_blocks(self, n: int = 10):
         return self._memory.get_context_blocks(n)

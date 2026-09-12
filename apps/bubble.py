@@ -20,8 +20,8 @@ BubbleAction = tuple[str, Callable[[], None]]
 
 
 class ContextBubble:
-    WIDTH = 420
-    HEIGHT = 246
+    WIDTH = 336
+    HEIGHT = 197
     MARGIN = 18
 
     def __init__(self, root: tk.Tk) -> None:
@@ -51,7 +51,7 @@ class ContextBubble:
         x, y = self._position(anchor)
         self.window.geometry(f"{self.WIDTH}x{self.HEIGHT}+{x}+{y}")
 
-        frame = tk.Frame(self.window, bg="#111827", padx=18, pady=15)
+        frame = tk.Frame(self.window, bg="#111827", padx=14, pady=12)
         frame.pack(fill="both", expand=True)
 
         header = tk.Frame(frame, bg="#111827")
@@ -68,7 +68,7 @@ class ContextBubble:
         logo.pack(side="left")
 
         brand = tk.Frame(header, bg="#111827")
-        brand.pack(side="left", padx=(10, 0), fill="x", expand=True)
+        brand.pack(side="left", padx=(8, 0), fill="x", expand=True)
         tk.Label(
             brand,
             text="ContextClip",
@@ -108,7 +108,7 @@ class ContextBubble:
             fg="#a5b4fc",
             anchor="w",
             font=("Segoe UI", 9, "bold"),
-        ).pack(fill="x", pady=(18, 5))
+        ).pack(fill="x", pady=(12, 4))
 
         tk.Label(
             frame,
@@ -117,7 +117,7 @@ class ContextBubble:
             fg="#f8fafc",
             anchor="w",
             justify="left",
-            wraplength=self.WIDTH - 42,
+            wraplength=self.WIDTH - 32,
             font=("Segoe UI", 12, "bold"),
         ).pack(fill="x")
 
@@ -130,7 +130,7 @@ class ContextBubble:
             justify="left",
             wraplength=self.WIDTH - 42,
             font=("Segoe UI", 9),
-        ).pack(fill="x", pady=(6, 0))
+        ).pack(fill="x", pady=(4, 0))
 
         if relation:
             tk.Label(
@@ -140,12 +140,12 @@ class ContextBubble:
                 fg="#86efac",
                 anchor="w",
                 justify="left",
-                wraplength=self.WIDTH - 42,
+                wraplength=self.WIDTH - 32,
                 font=("Segoe UI", 9),
             ).pack(fill="x", pady=(8, 0))
 
         action_frame = tk.Frame(frame, bg="#111827")
-        action_frame.pack(fill="x", side="bottom", pady=(14, 0))
+        action_frame.pack(fill="x", side="bottom", pady=(10, 0))
 
         for label, callback in list(actions or [])[:3]:
             button = tk.Button(

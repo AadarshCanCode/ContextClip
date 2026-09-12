@@ -59,6 +59,8 @@ class BackendActionBroker:
             "context.dump_llm_context": self._dump_llm_context,
             "context.export_markdown": self._export_markdown,
             "context.copy_markdown": self._copy_markdown,
+            "context.save_clipboard": self._save_clipboard_context,
+            "context.find_related": self._find_related_context,
             "graph.summary": self._graph_summary,
             "references.search_clipboard": self._search_clipboard_references,
             "ai.explain_clipboard": self._ai_explain_clipboard,
@@ -68,6 +70,8 @@ class BackendActionBroker:
             "ai.draft_reply": self._ai_draft_reply,
             "ai.adapt_code": self._ai_adapt_code,
             "system.open_clipboard_url": self._open_clipboard_url,
+            "tasks.add_clipboard": self._add_clipboard_task,
+            "calendar.add_clipboard": self._add_clipboard_calendar,
             "capture.record_clipboard_copy": self._record_clipboard_copy,
             "capture.record_clipboard_paste": self._record_clipboard_paste,
         }
@@ -93,6 +97,17 @@ class BackendActionBroker:
                 description="Render the active event window as Markdown and place it on the OS clipboard.",
                 requires=["clipboard_write"],
                 mutates=True,
+            ),
+            BackendActionDescriptor(
+                id="context.save_clipboard",
+                name="Save copied context",
+                description="Save the selected copied context as a local Markdown note and JSONL record.",
+                mutates=True,
+            ),
+            BackendActionDescriptor(
+                id="context.find_related",
+                name="Find related context",
+                description="Find recently captured events related to the selected copied context.",
             ),
             BackendActionDescriptor(
                 id="graph.summary",
@@ -146,6 +161,19 @@ class BackendActionBroker:
                 name="Open clipboard URL",
                 description="Open a copied HTTP or HTTPS URL in the default browser.",
                 requires=["clipboard_read", "default_browser"],
+                mutates=True,
+            ),
+            BackendActionDescriptor(
+                id="tasks.add_clipboard",
+                name="Create task",
+                description="Create a local task from the selected copied context.",
+                mutates=True,
+            ),
+            BackendActionDescriptor(
+                id="calendar.add_clipboard",
+                name="Add to calendar",
+                description="Create a calendar event from copied context using Google Calendar credentials, with ICS fallback.",
+                requires=["credentials.json"],
                 mutates=True,
             ),
             BackendActionDescriptor(
@@ -228,8 +256,13 @@ class BackendActionBroker:
         )
 
     def _search_clipboard_references(self, **kwargs: Any) -> BackendActionResult:
+        from core.action_connections import build_action_context
+        from cloud.exa_search import search_clipboard_references
+
         try:
-            result = self._agent.search_clipboard_references(
+            text, _context, _event = build_action_context(self._agent, kwargs)
+            result = search_clipboard_references(
+                text=text,
                 search_type=kwargs.get("search_type") or "auto",
                 num_results=int(kwargs.get("num_results") or 10),
                 include_domains=_optional_list(kwargs.get("include_domains")),
@@ -250,29 +283,67 @@ class BackendActionBroker:
             data=result.to_dict(),
         )
 
-    def _ai_explain_clipboard(self, **_: Any) -> BackendActionResult:
-        return self._run_ai_clipboard_action("ai.explain_clipboard", "explain")
-
-    def _ai_summarize_clipboard(self, **_: Any) -> BackendActionResult:
-        return self._run_ai_clipboard_action("ai.summarize_clipboard", "summarize")
-
-    def _ai_help_fix_clipboard(self, **_: Any) -> BackendActionResult:
-        return self._run_ai_clipboard_action("ai.help_fix_clipboard", "help_fix")
-
-    def _ai_extract_information(self, **_: Any) -> BackendActionResult:
-        return self._run_ai_clipboard_action("ai.extract_information", "extract_information")
-
-    def _ai_draft_reply(self, **_: Any) -> BackendActionResult:
-        return self._run_ai_clipboard_action("ai.draft_reply", "draft_reply")
-
-    def _ai_adapt_code(self, **_: Any) -> BackendActionResult:
-        return self._run_ai_clipboard_action("ai.adapt_code", "adapt_code")
-
-    def _run_ai_clipboard_action(self, backend_action_id: str, action_name: str) -> BackendActionResult:
-        from cloud.clipboard_actions import run_clipboard_ai_action
+    def _save_clipboard_context(self, **kwargs: Any) -> BackendActionResult:
+        from core.action_connections import save_context
 
         try:
-            data = run_clipboard_ai_action(action_name)
+            data = save_context(self._agent, kwargs)
+        except Exception as exc:
+            return BackendActionResult(
+                action_id="context.save_clipboard",
+                success=False,
+                message=f"Save context action unavailable: {exc}",
+            )
+        return BackendActionResult(
+            action_id="context.save_clipboard",
+            success=True,
+            message="Copied context saved.",
+            data=data,
+        )
+
+    def _find_related_context(self, **kwargs: Any) -> BackendActionResult:
+        from core.action_connections import find_related_context
+
+        try:
+            data = find_related_context(self._agent, kwargs)
+        except Exception as exc:
+            return BackendActionResult(
+                action_id="context.find_related",
+                success=False,
+                message=f"Related context unavailable: {exc}",
+            )
+        return BackendActionResult(
+            action_id="context.find_related",
+            success=True,
+            message=f"Found {len(data.get('related', []))} related context item(s).",
+            data=data,
+        )
+
+    def _ai_explain_clipboard(self, **kwargs: Any) -> BackendActionResult:
+        return self._run_ai_clipboard_action("ai.explain_clipboard", "explain", **kwargs)
+
+    def _ai_summarize_clipboard(self, **kwargs: Any) -> BackendActionResult:
+        return self._run_ai_clipboard_action("ai.summarize_clipboard", "summarize", **kwargs)
+
+    def _ai_help_fix_clipboard(self, **kwargs: Any) -> BackendActionResult:
+        return self._run_ai_clipboard_action("ai.help_fix_clipboard", "help_fix", **kwargs)
+
+    def _ai_extract_information(self, **kwargs: Any) -> BackendActionResult:
+        return self._run_ai_clipboard_action("ai.extract_information", "extract_information", **kwargs)
+
+    def _ai_draft_reply(self, **kwargs: Any) -> BackendActionResult:
+        return self._run_ai_clipboard_action("ai.draft_reply", "draft_reply", **kwargs)
+
+    def _ai_adapt_code(self, **kwargs: Any) -> BackendActionResult:
+        return self._run_ai_clipboard_action("ai.adapt_code", "adapt_code", **kwargs)
+
+    def _run_ai_clipboard_action(self, backend_action_id: str, action_name: str, **kwargs: Any) -> BackendActionResult:
+        from cloud.clipboard_actions import run_clipboard_ai_action
+        from core.action_connections import build_action_context
+
+        try:
+            text, _context, _event = build_action_context(self._agent, kwargs)
+            data = run_clipboard_ai_action(action_name, text=text)
         except Exception as exc:
             return BackendActionResult(
                 action_id=backend_action_id,
@@ -286,11 +357,11 @@ class BackendActionBroker:
             data=data,
         )
 
-    def _open_clipboard_url(self, **_: Any) -> BackendActionResult:
-        from cloud.clipboard_actions import open_clipboard_url
+    def _open_clipboard_url(self, **kwargs: Any) -> BackendActionResult:
+        from core.action_connections import open_resource
 
         try:
-            data = open_clipboard_url()
+            data = open_resource(self._agent, kwargs)
         except Exception as exc:
             return BackendActionResult(
                 action_id="system.open_clipboard_url",
@@ -301,6 +372,44 @@ class BackendActionBroker:
             action_id="system.open_clipboard_url",
             success=True,
             message="Clipboard URL opened.",
+            data=data,
+        )
+
+    def _add_clipboard_task(self, **kwargs: Any) -> BackendActionResult:
+        from core.action_connections import add_to_tasks
+
+        try:
+            data = add_to_tasks(self._agent, kwargs)
+        except Exception as exc:
+            return BackendActionResult(
+                action_id="tasks.add_clipboard",
+                success=False,
+                message=f"Create task action unavailable: {exc}",
+            )
+        title = data.get("task", {}).get("title", "task")
+        return BackendActionResult(
+            action_id="tasks.add_clipboard",
+            success=True,
+            message=f"Created task: {title}",
+            data=data,
+        )
+
+    def _add_clipboard_calendar(self, **kwargs: Any) -> BackendActionResult:
+        from core.action_connections import add_to_calendar
+
+        try:
+            data = add_to_calendar(self._agent, kwargs)
+        except Exception as exc:
+            return BackendActionResult(
+                action_id="calendar.add_clipboard",
+                success=False,
+                message=f"Calendar action unavailable: {exc}",
+            )
+        mode = data.get("mode", "calendar")
+        return BackendActionResult(
+            action_id="calendar.add_clipboard",
+            success=True,
+            message="Calendar event prepared." if mode == "dry_run" else "Calendar action completed.",
             data=data,
         )
 

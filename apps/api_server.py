@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -251,6 +252,8 @@ def create_app(
 
     @app.get("/settings/status")
     def settings_status() -> dict[str, Any]:
+        from cloud.google_calendar import google_calendar_status
+
         return {
             "openrouter": {
                 "configured": bool(os.environ.get("OPENROUTER_API_KEY")),
@@ -263,6 +266,7 @@ def create_app(
                 "search_type": os.environ.get("EXA_SEARCH_TYPE", "auto"),
                 "num_results": int(os.environ.get("EXA_NUM_RESULTS", "10") or 10),
             },
+            "calendar": google_calendar_status(),
             "capture": {
                 "data_dir": str(data_dir.resolve()),
                 "copy_settle_ms": int(os.environ.get("CONTEXTCLIP_COPY_SETTLE_MS", "120") or 120),
@@ -298,7 +302,7 @@ def _event_payload(event: Event) -> dict[str, Any]:
     data["anchor"] = _event_anchor(event)
     data["display"] = {
         "title": _event_title(event),
-        "source": event.source_app.app_family or event.source_app.process_name or "desktop",
+        "source": _source_label(event),
         "preview": safe_preview(event.clipboard.preview_text, 140),
         "time": event.time_label,
     }
@@ -319,7 +323,7 @@ def _bubble_payload(
         "anchor": _event_anchor(event),
         "title": "Copy captured" if phase == "captured" else (context or {}).get("intent", "Context ready"),
         "subtitle": safe_preview((context or {}).get("summary") or event.clipboard.preview_text, 140),
-        "source": event.source_app.app_family or event.source_app.process_name or "desktop",
+        "source": _source_label(event),
         "content_type": event.content_type,
         "event_id": event.id,
         "actions": actions or [],
@@ -350,9 +354,42 @@ def _action_payload(action: BubbleActionDefinition) -> dict[str, str]:
 
 
 def _event_title(event: Event) -> str:
-    source = event.source_app.app_family or event.source_app.process_name or "desktop"
+    source = _source_label(event)
     verb = "copied" if event.type == EventType.COPY else "pasted"
-    return f"{_pretty_family(source)} {verb}"
+    return f"{source} {verb}"
+
+
+def _source_label(event: Event) -> str:
+    app = event.source_app
+    family_labels = {
+        "browser_chrome": "Google Chrome",
+        "browser_edge": "Microsoft Edge",
+        "browser_firefox": "Firefox",
+        "browser_brave": "Brave",
+        "browser_opera": "Opera",
+        "browser_opera_gx": "Opera GX",
+        "browser_vivaldi": "Vivaldi",
+        "browser_arc": "Arc",
+        "browser_zen": "Zen Browser",
+        "browser_chromium": "Chromium",
+        "vs_code": "VS Code",
+        "notepad_plus": "Notepad++",
+    }
+    family = (app.app_family or "").lower()
+    if family and family != "unknown":
+        return family_labels.get(family, _pretty_family(family))
+
+    process = (app.process_name or "").strip()
+    if process:
+        process_name = re.split(r"[\\/]", process)[-1]
+        process_name = re.sub(r"\.exe$", "", process_name, flags=re.IGNORECASE)
+        if process_name:
+            return _pretty_family(process_name.replace("-", "_"))
+
+    title = (app.window_title or "").strip()
+    if title:
+        return title.split(" - ")[-1].strip() or title
+    return "Desktop"
 
 
 def _pretty_family(value: str) -> str:

@@ -120,6 +120,8 @@ def _infer_intent(content_type: str, text: str, application: str, window_title: 
         if any(word in combined for word in ("fix", "todo", "bug", "error")):
             return "modify_code"
         return "understand_code"
+    if _has_actionable_url(combined):
+        return "follow_instructions"
     if content_type == "deadline":
         return "track_deadline"
     if content_type == "email":
@@ -130,6 +132,14 @@ def _infer_intent(content_type: str, text: str, application: str, window_title: 
         return "extract_information"
     if any(word in combined for word in ("deadline", "due", "submit", "upload")):
         return "track_deadline"
+    if re.search(r"\b(today|tomorrow|meeting|appointment|call)\b", combined, re.I) and re.search(
+        r"\b(?:at|@)\s*\d{1,2}(?::\d{2})?\s*(?:am|pm)?\b|\b\d{1,2}:\d{2}\b",
+        combined,
+        re.I,
+    ):
+        return "track_deadline"
+    if any(word in combined for word in ("please", "kindly", "action required", "fill out", "register", "confirm")):
+        return "follow_instructions"
     if any(word in combined for word in ("readme", "docs", "documentation", "guide")):
         return "learn_topic"
     return "summarize_information"
@@ -179,12 +189,45 @@ def _extract_entities(text: str) -> list[Entity]:
     return entities[:12]
 
 
+def _has_actionable_url(text: str) -> bool:
+    has_url = bool(re.search(r"https?://", text, re.I))
+    has_form = any(marker in text for marker in _FORM_URL_MARKERS)
+    has_action_words = any(word in text for word in _ACTION_WORDS)
+    return has_url and (has_form or has_action_words)
+
+
 _DEADLINE_RE = re.compile(r"\b(deadline|due|submit|upload|before|by)\b", re.I)
+_FORM_URL_MARKERS = (
+    "forms.gle/",
+    "docs.google.com/forms",
+    "forms.office.com/",
+    "typeform.com/",
+    "form.jotform.com/",
+    "surveymonkey.com/",
+)
+_ACTION_WORDS = (
+    "action required",
+    "action needed",
+    "please",
+    "kindly",
+    "submit",
+    "upload",
+    "complete",
+    "confirm",
+    "register",
+    "respond",
+    "fill out",
+    "fill",
+)
 _ENTITY_PATTERNS = [
     (re.compile(r"https?://[^\s)>\]]+", re.I), "URL"),
     (re.compile(r"\b[A-Z][A-Za-z]+(?:Error|Exception)\b"), "Error"),
     (re.compile(r"\b(ERR_[A-Z_]+|ECONNREFUSED|ETIMEDOUT|ENOENT)\b", re.I), "Error"),
+    (re.compile(r"\b(?:today|tomorrow)\b", re.I), "Date"),
+    (re.compile(r"\b(?:Mon|Tue|Tues|Wed|Thu|Thurs|Fri|Sat|Sun)(?:day)?\b", re.I), "Date"),
     (re.compile(r"\b\d{1,2}(?:st|nd|rd|th)?\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\s+\d{4}\b", re.I), "Date"),
     (re.compile(r"\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\s+\d{1,2},?\s+\d{4}\b", re.I), "Date"),
+    (re.compile(r"\b(?:at|@)\s*\d{1,2}(?::\d{2})?\s*(?:am|pm)?\b", re.I), "Time"),
+    (re.compile(r"\b\d{1,2}:\d{2}\s*(?:am|pm)?\b", re.I), "Time"),
     (re.compile(r"\b[A-Za-z_][\w.-]+\.(?:py|js|ts|tsx|jsx|json|md|yaml|yml|txt|docx|xlsx)\b"), "File"),
 ]

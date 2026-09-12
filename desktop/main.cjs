@@ -8,6 +8,7 @@ const API_PORT = Number(process.env.CONTEXTCLIP_API_PORT || "8765");
 const API_BASE = `http://127.0.0.1:${API_PORT}`;
 const WS_URL = `ws://127.0.0.1:${API_PORT}/events`;
 const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL || "http://127.0.0.1:5173";
+const APP_ICON = path.join(PROJECT_ROOT, "assets", "logo");
 
 let backendProcess = null;
 let mainWindow = null;
@@ -85,6 +86,7 @@ function createWindows() {
     minHeight: 640,
     backgroundColor: "#10172a",
     title: "ContextClip",
+    icon: APP_ICON,
     titleBarStyle: "hidden",
     trafficLightPosition: { x: 18, y: 18 },
     webPreferences: {
@@ -96,8 +98,8 @@ function createWindows() {
   mainWindow.loadURL(appUrl(""));
 
   bubbleWindow = new BrowserWindow({
-    width: 700,
-    height: 390,
+    width: 392,
+    height: 218,
     show: false,
     frame: false,
     transparent: true,
@@ -106,6 +108,7 @@ function createWindows() {
     alwaysOnTop: true,
     hasShadow: false,
     backgroundColor: "#00000000",
+    icon: APP_ICON,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
@@ -117,8 +120,8 @@ function createWindows() {
 }
 
 function bubbleBounds(anchor) {
-  const width = 700;
-  const height = 390;
+  const width = 392;
+  const height = 218;
   const point = {
     x: Number(anchor?.x || 0),
     y: Number(anchor?.y || 0),
@@ -162,6 +165,9 @@ ipcMain.on("contextclip:bubble-hide", () => {
 });
 
 app.whenReady().then(async () => {
+  if (process.platform === "win32") {
+    app.setAppUserModelId("ContextClip");
+  }
   startBackend();
   await waitForBackend();
   createWindows();

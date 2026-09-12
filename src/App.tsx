@@ -5,6 +5,7 @@ import {
   CalendarPlus,
   CheckCircle2,
   ClipboardList,
+  Copy,
   Code2,
   Compass,
   FileText,
@@ -45,7 +46,7 @@ const appIcons: Record<string, typeof Home> = {
   terminal: Terminal,
 };
 
-const quickActions = ["ai.summarize_clipboard", "ai.explain_clipboard", "references.search_clipboard", "context.copy_markdown"];
+const quickActions = ["calendar.add_clipboard", "tasks.add_clipboard", "ai.draft_reply", "references.search_clipboard"];
 
 export function App() {
   const [view, setView] = useState<ViewId>("home");
@@ -143,7 +144,7 @@ export function App() {
       <section className="shell">
         <aside className="sidebar">
           <div className="brand-lockup">
-            <div className="brand-mark"><ClipboardList size={23} /></div>
+            <div className="brand-mark"><img src="logo" alt="" /></div>
             <span>ContextClip</span>
           </div>
           <nav className="nav-list" aria-label="Primary navigation">
@@ -193,7 +194,15 @@ export function App() {
                   onRunAction={execute}
                 />
               )}
-              {view === "history" && <HistoryView events={filteredEvents} />}
+              {view === "history" && (
+                <HistoryView
+                  events={filteredEvents}
+                  stats={stats}
+                  busyAction={busyAction}
+                  lastResult={lastResult}
+                  onRunAction={execute}
+                />
+              )}
               {view === "apps" && <AppsView apps={apps} />}
               {view === "actions" && <ActionsView actions={actions} busyAction={busyAction} onRunAction={execute} lastResult={lastResult} />}
               {view === "settings" && settings && <SettingsView settings={settings} />}
@@ -269,11 +278,37 @@ function HomeView({
   );
 }
 
-function HistoryView({ events }: { events: CaptureEvent[] }) {
+function HistoryView({
+  events,
+  stats,
+  busyAction,
+  lastResult,
+  onRunAction,
+}: {
+  events: CaptureEvent[];
+  stats: Record<string, number>;
+  busyAction: string;
+  lastResult: BackendActionResult | null;
+  onRunAction: (actionId: string) => void;
+}) {
   return (
     <section className="wide-panel">
-      <div className="section-heading"><h1>Context History</h1><span>{events.length} events</span></div>
+      <div className="section-heading history-heading">
+        <div>
+          <h1>Context History</h1>
+          <span>{stats.copies_today ?? 0} copies · {stats.pastes_today ?? 0} pastes · {events.length} shown</span>
+        </div>
+        <button
+          className="history-copy-button"
+          onClick={() => onRunAction("context.copy_markdown")}
+          disabled={busyAction === "context.copy_markdown"}
+        >
+          {busyAction === "context.copy_markdown" ? <Loader2 size={16} className="spin" /> : <Copy size={16} />}
+          <span>Copy context</span>
+        </button>
+      </div>
       <EventList events={events} />
+      {lastResult?.action_id === "context.copy_markdown" && <ResultStrip result={lastResult} />}
     </section>
   );
 }
@@ -328,6 +363,11 @@ function SettingsView({ settings }: { settings: SettingsStatus }) {
         <SettingTile title="Exa" status={settings.exa.configured} rows={[
           ["Search type", settings.exa.search_type],
           ["Results", String(settings.exa.num_results)],
+        ]} />
+        <SettingTile title="Google Calendar" status={settings.calendar.configured} rows={[
+          ["Credentials", settings.calendar.credential_file || "missing"],
+          ["Token", settings.calendar.token_found ? settings.calendar.token_file : "not authorized"],
+          ["Timezone", settings.calendar.timezone],
         ]} />
         <SettingTile title="Capture" status rows={[
           ["Poll", `${settings.capture.clipboard_poll_ms} ms`],

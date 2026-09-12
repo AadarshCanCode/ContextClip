@@ -1,0 +1,569 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>ContextClip HyperFrames Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #06121f;
+        color: #eef7ff;
+        font-family: Inter, "Segoe UI", Arial, sans-serif;
+      }
+
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background:
+          radial-gradient(circle at 18% 18%, rgba(66, 211, 255, 0.36), transparent 28%),
+          radial-gradient(circle at 82% 20%, rgba(255, 153, 102, 0.32), transparent 28%),
+          linear-gradient(135deg, #07182b 0%, #102641 46%, #1b3158 100%);
+      }
+
+      .clip {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+      }
+
+      .frame-lines {
+        position: absolute;
+        inset: 0;
+        opacity: 0.35;
+        background-image:
+          linear-gradient(rgba(255,255,255,0.08) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255,255,255,0.07) 1px, transparent 1px);
+        background-size: 96px 96px;
+      }
+
+      .glow-band {
+        position: absolute;
+        left: 120px;
+        right: 120px;
+        top: 112px;
+        height: 760px;
+        border-radius: 48px;
+        background: linear-gradient(120deg, rgba(37, 99, 235, 0.32), rgba(45, 212, 191, 0.2), rgba(255, 255, 255, 0.08));
+        filter: blur(36px);
+        opacity: 0.68;
+      }
+
+      .brand {
+        position: absolute;
+        left: 112px;
+        top: 82px;
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        font-size: 34px;
+        font-weight: 800;
+      }
+
+      .brand-mark {
+        width: 72px;
+        height: 72px;
+        border-radius: 22px;
+        display: grid;
+        place-items: center;
+        background: linear-gradient(145deg, #075985, #1e1b4b 56%, #4c1d95);
+        box-shadow: 0 22px 50px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(255,255,255,0.45);
+        color: #ffffff;
+      }
+
+      .brand-mark span {
+        font-size: 27px;
+        letter-spacing: 0;
+        color: #ffffff;
+        text-shadow: 0 2px 6px rgba(0,0,0,0.35);
+      }
+
+      .dashboard {
+        position: absolute;
+        left: 98px;
+        top: 174px;
+        width: 920px;
+        height: 728px;
+        border-radius: 42px;
+        border: 1px solid rgba(255,255,255,0.34);
+        background: rgba(238, 246, 255, 0.84);
+        box-shadow: 0 32px 120px rgba(3, 8, 20, 0.34), inset 0 1px 0 rgba(255,255,255,0.42);
+        backdrop-filter: blur(26px);
+        padding: 54px;
+      }
+
+      .search {
+        height: 66px;
+        width: 640px;
+        border-radius: 24px;
+        background: rgba(255,255,255,0.45);
+        color: #18314d;
+        display: flex;
+        align-items: center;
+        gap: 20px;
+        padding: 0 30px;
+        font-size: 22px;
+      }
+
+      .headline {
+        margin-top: 54px;
+        font-size: 56px;
+        line-height: 1.04;
+        color: #020617;
+        font-weight: 850;
+      }
+
+      .subhead {
+        margin-top: 12px;
+        color: #233147;
+        font-size: 25px;
+      }
+
+      .app-row {
+        margin-top: 38px;
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 18px;
+      }
+
+      .app-card {
+        height: 142px;
+        border-radius: 24px;
+        background: rgba(255,255,255,0.9);
+        border: 1px solid rgba(255,255,255,0.42);
+        color: #020617;
+        padding: 22px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+      }
+
+      .app-icon {
+        width: 46px;
+        height: 46px;
+        border-radius: 14px;
+        display: grid;
+        place-items: center;
+        color: white;
+        font-weight: 850;
+        font-size: 20px;
+      }
+
+      .app-card strong {
+        display: block;
+        font-size: 20px;
+      }
+
+      .app-card span {
+        color: #064e3b;
+        font-size: 17px;
+      }
+
+      .recent {
+        margin-top: 42px;
+      }
+
+      .recent h2 {
+        font-size: 28px;
+        color: #020617;
+      }
+
+      .event-row {
+        margin-top: 16px;
+        min-height: 78px;
+        border-radius: 22px;
+        background: rgba(255,255,255,0.88);
+        color: #020617;
+        display: grid;
+        grid-template-columns: 62px 1fr auto;
+        align-items: center;
+        gap: 18px;
+        padding: 16px 22px;
+      }
+
+      .event-row p {
+        font-size: 20px;
+        font-weight: 800;
+      }
+
+      .event-row small {
+        display: block;
+        margin-top: 4px;
+        font-size: 16px;
+        color: #28384f;
+      }
+
+      .toast-stack {
+        position: absolute;
+        right: 120px;
+        top: 76px;
+        width: 360px;
+        display: grid;
+        gap: 18px;
+      }
+
+      .toast {
+        height: 84px;
+        border-radius: 24px;
+        background: rgba(255,255,255,0.82);
+        border: 1px solid rgba(255,255,255,0.38);
+        backdrop-filter: blur(22px);
+        box-shadow: 0 20px 70px rgba(9, 18, 36, 0.22);
+        padding: 14px 18px;
+        display: grid;
+        grid-template-columns: 52px 1fr auto;
+        gap: 14px;
+        align-items: center;
+        color: #020617;
+      }
+
+      .toast strong {
+        font-size: 18px;
+      }
+
+      .toast span,
+      .toast time {
+        font-size: 14px;
+        color: #243246;
+      }
+
+      .cursor-ring {
+        position: absolute;
+        left: 1056px;
+        top: 482px;
+        width: 34px;
+        height: 34px;
+        border-radius: 50%;
+        border: 4px solid #ffffff;
+        box-shadow: 0 0 0 12px rgba(255,255,255,0.14);
+      }
+
+      .selection-label {
+        position: absolute;
+        left: 1098px;
+        top: 475px;
+        padding: 13px 18px;
+        border-radius: 17px;
+        background: #ffffff;
+        color: #07172c;
+        font-size: 19px;
+        font-weight: 800;
+      }
+
+      .bubble {
+        position: absolute;
+        right: 116px;
+        top: 342px;
+        width: 760px;
+        height: 490px;
+        border-radius: 58px;
+        border: 1px solid rgba(255,255,255,0.52);
+        background: rgba(238, 246, 255, 0.86);
+        backdrop-filter: blur(30px);
+        box-shadow: 0 44px 140px rgba(2, 8, 23, 0.42), inset 0 1px 0 rgba(255,255,255,0.58);
+        padding: 40px;
+        color: #06172c;
+      }
+
+      .bubble-header,
+      .result-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .bubble-title {
+        display: flex;
+        align-items: center;
+        gap: 18px;
+      }
+
+      .bubble-title strong,
+      .result-header strong {
+        display: block;
+        font-size: 28px;
+      }
+
+      .bubble-title span,
+      .result-header span {
+        display: block;
+        margin-top: 4px;
+        font-size: 18px;
+        color: #26364e;
+      }
+
+      .pin {
+        width: 48px;
+        height: 48px;
+        display: grid;
+        place-items: center;
+        border-radius: 50%;
+        background: rgba(255,255,255,0.86);
+        font-size: 22px;
+        font-weight: 900;
+      }
+
+      .copy-card {
+        margin-top: 34px;
+        height: 140px;
+        border-radius: 30px;
+        background: rgba(255,255,255,0.9);
+        border: 1px solid rgba(255,255,255,0.48);
+        padding: 30px;
+        display: grid;
+        grid-template-columns: 74px 1fr auto;
+        gap: 24px;
+        align-items: center;
+      }
+
+      .copy-card p {
+        font-size: 29px;
+        line-height: 1.18;
+        font-weight: 770;
+      }
+
+      .copy-card span,
+      .copy-card time {
+        font-size: 17px;
+        color: #28384f;
+      }
+
+      .bubble-actions {
+        margin-top: 30px;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 18px;
+      }
+
+      .action {
+        height: 116px;
+        border-radius: 28px;
+        background: rgba(255,255,255,0.88);
+        border: 1px solid rgba(255,255,255,0.5);
+        display: grid;
+        place-items: center;
+        gap: 10px;
+        font-size: 20px;
+        font-weight: 760;
+      }
+
+      .action.primary {
+        background: linear-gradient(135deg, #0ea5e9, #4f46e5);
+        color: white;
+        box-shadow: 0 20px 70px rgba(79, 70, 229, 0.34);
+      }
+
+      .prompt {
+        margin-top: 24px;
+        height: 66px;
+        border-radius: 24px;
+        background: rgba(255,255,255,0.86);
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        padding: 0 24px;
+        color: #2a3b53;
+        font-size: 21px;
+      }
+
+      .result {
+        position: absolute;
+        left: 430px;
+        top: 268px;
+        width: 1060px;
+        height: 544px;
+        border-radius: 52px;
+        border: 1px solid rgba(255,255,255,0.48);
+        background: rgba(238, 246, 255, 0.86);
+        backdrop-filter: blur(28px);
+        box-shadow: 0 44px 150px rgba(2, 8, 23, 0.38);
+        padding: 54px;
+        color: #06172c;
+      }
+
+      .result-grid {
+        margin-top: 44px;
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 24px;
+      }
+
+      .result-card {
+        min-height: 220px;
+        border-radius: 32px;
+        background: rgba(255,255,255,0.9);
+        border: 1px solid rgba(255,255,255,0.48);
+        padding: 30px;
+      }
+
+      .result-card strong {
+        display: block;
+        font-size: 23px;
+      }
+
+      .result-card p {
+        margin-top: 16px;
+        color: #26364e;
+        font-size: 20px;
+        line-height: 1.38;
+      }
+
+      .closing {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 80px;
+        text-align: center;
+        color: white;
+      }
+
+      .closing h1 {
+        font-size: 76px;
+        font-weight: 900;
+      }
+
+      .closing p {
+        margin-top: 12px;
+        font-size: 28px;
+        color: rgba(238, 247, 255, 0.78);
+      }
+
+      .blue { background: linear-gradient(135deg, #075985, #1d4ed8); }
+      .violet { background: linear-gradient(135deg, #5b21b6, #312e81); }
+      .green { background: linear-gradient(135deg, #047857, #065f46); }
+      .orange { background: linear-gradient(135deg, #f97316, #dc2626); }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="10"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div class="clip" id="background" data-start="0" data-duration="10" data-track-index="0">
+        <div class="frame-lines"></div>
+        <div class="glow-band"></div>
+      </div>
+
+      <section class="clip" id="scene-copy" data-start="0" data-duration="3.25" data-track-index="1">
+        <div class="brand">
+          <div class="brand-mark"><span>CC</span></div>
+          <span>ContextClip</span>
+        </div>
+        <div class="dashboard">
+          <div class="search">Search your clips, ask anything...</div>
+          <h1 class="headline">Copy once. Context follows.</h1>
+          <p class="subhead">The desktop agent listens for real copy events, source app, and nearby workflow state.</p>
+          <div class="app-row">
+            <div class="app-card"><div class="app-icon blue">O</div><div><strong>Outlook</strong><span>Connected</span></div></div>
+            <div class="app-card"><div class="app-icon violet">T</div><div><strong>Teams</strong><span>Connected</span></div></div>
+            <div class="app-card"><div class="app-icon blue">W</div><div><strong>Word</strong><span>Connected</span></div></div>
+            <div class="app-card"><div class="app-icon green">X</div><div><strong>Excel</strong><span>Connected</span></div></div>
+          </div>
+          <div class="recent">
+            <h2>Recent Context</h2>
+            <div class="event-row"><div class="app-icon violet">T</div><div><p>Meeting detected</p><small>Project review with Prof. Sharma, Tuesday 3 PM</small></div><time>now</time></div>
+            <div class="event-row"><div class="app-icon blue">VS</div><div><p>Error detected</p><small>ERR_CONNECTION_REFUSED 10.0.0.42:8080</small></div><time>12m</time></div>
+          </div>
+        </div>
+        <div class="toast-stack">
+          <div class="toast"><div class="app-icon blue">O</div><div><strong>Meeting details copied</strong><span>From Outlook</span></div><time>now</time></div>
+          <div class="toast"><div class="app-icon green">X</div><div><strong>Table data copied</strong><span>From Excel</span></div><time>5m</time></div>
+        </div>
+        <div class="cursor-ring"></div>
+        <div class="selection-label">Ctrl+C captured</div>
+      </section>
+
+      <section class="clip" id="scene-bubble" data-start="2.8" data-duration="4.25" data-track-index="2">
+        <div class="bubble">
+          <div class="bubble-header">
+            <div class="bubble-title">
+              <div class="brand-mark"><span>CC</span></div>
+              <div><strong>ContextClip</strong><span>Meeting detected</span></div>
+            </div>
+            <div class="pin">X</div>
+          </div>
+          <div class="copy-card">
+            <div class="app-icon blue">Cal</div>
+            <div>
+              <p>Project review with Prof. Sharma, Tuesday 3 PM</p>
+              <span>From Outlook</span>
+            </div>
+            <time>Just now</time>
+          </div>
+          <div class="bubble-actions">
+            <div class="action primary">Add to Calendar</div>
+            <div class="action">Create Task</div>
+            <div class="action">Search References</div>
+          </div>
+          <div class="prompt">Ask anything about this copied context...</div>
+        </div>
+      </section>
+
+      <section class="clip" id="scene-result" data-start="7.25" data-duration="2.75" data-track-index="3">
+        <div class="result">
+          <div class="result-header">
+            <div>
+              <strong>Action completed from the copy bubble</strong>
+              <span>No paste-triggered popup. No demo data. Just the captured event.</span>
+            </div>
+            <div class="brand-mark"><span>OK</span></div>
+          </div>
+          <div class="result-grid">
+            <div class="result-card"><strong>Calendar</strong><p>Creates a dated event from copied meeting text with Google Calendar credentials or ICS fallback.</p></div>
+            <div class="result-card"><strong>Task</strong><p>Turns actionable copied instructions into a local task with source and due-date metadata.</p></div>
+            <div class="result-card"><strong>References</strong><p>Uses Exa on demand to search relevant sources for the selected clipboard context.</p></div>
+          </div>
+        </div>
+        <div class="closing">
+          <h1>Context in a bubble.</h1>
+          <p>Copy, understand, and act from the desktop.</p>
+        </div>
+      </section>
+    </div>
+
+    <script>
+      const tl = gsap.timeline({ paused: true });
+
+      tl.fromTo("#scene-copy .brand", { opacity: 0, y: -28 }, { opacity: 1, y: 0, duration: 0.55, ease: "power3.out" }, 0.1);
+      tl.fromTo("#scene-copy .dashboard", { opacity: 0, y: 46, scale: 0.97 }, { opacity: 1, y: 0, scale: 1, duration: 0.8, ease: "power3.out" }, 0.25);
+      tl.fromTo("#scene-copy .app-card", { opacity: 0, y: 22 }, { opacity: 1, y: 0, duration: 0.44, stagger: 0.08, ease: "power2.out" }, 1.0);
+      tl.fromTo("#scene-copy .event-row", { opacity: 0, x: -24 }, { opacity: 1, x: 0, duration: 0.5, stagger: 0.15, ease: "power2.out" }, 1.45);
+      tl.fromTo("#scene-copy .toast", { opacity: 0, x: 38 }, { opacity: 1, x: 0, duration: 0.48, stagger: 0.18, ease: "power2.out" }, 1.8);
+      tl.fromTo(".cursor-ring", { opacity: 0, scale: 0.35 }, { opacity: 1, scale: 1, duration: 0.3, ease: "power2.out" }, 2.15);
+      tl.fromTo(".selection-label", { opacity: 0, x: -18 }, { opacity: 1, x: 0, duration: 0.34, ease: "power2.out" }, 2.2);
+      tl.to(".cursor-ring", { scale: 1.22, duration: 0.24, repeat: 1, yoyo: true, ease: "power1.inOut" }, 2.55);
+
+      tl.fromTo("#scene-bubble .bubble", { opacity: 0, y: 50, scale: 0.92 }, { opacity: 1, y: 0, scale: 1, duration: 0.72, ease: "back.out(1.2)" }, 3.0);
+      tl.fromTo("#scene-bubble .copy-card", { opacity: 0, y: 28 }, { opacity: 1, y: 0, duration: 0.42, ease: "power2.out" }, 3.55);
+      tl.fromTo("#scene-bubble .action", { opacity: 0, y: 34 }, { opacity: 1, y: 0, duration: 0.42, stagger: 0.12, ease: "power2.out" }, 4.0);
+      tl.fromTo("#scene-bubble .prompt", { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" }, 4.55);
+      tl.to("#scene-bubble .action.primary", { scale: 1.04, duration: 0.24, repeat: 1, yoyo: true, ease: "power1.inOut" }, 5.6);
+      tl.to("#scene-bubble .bubble", { opacity: 0, y: -36, scale: 0.97, duration: 0.6, ease: "power2.in" }, 6.65);
+      tl.set("#scene-bubble .bubble", { opacity: 0 }, 7.25);
+
+      tl.fromTo("#scene-result .result", { opacity: 0, y: 46, scale: 0.96 }, { opacity: 1, y: 0, scale: 1, duration: 0.7, ease: "power3.out" }, 7.32);
+      tl.fromTo("#scene-result .result-card", { opacity: 0, y: 32 }, { opacity: 1, y: 0, duration: 0.45, stagger: 0.12, ease: "power2.out" }, 7.78);
+      tl.fromTo("#scene-result .closing", { opacity: 0, y: 34 }, { opacity: 1, y: 0, duration: 0.65, ease: "power3.out" }, 8.7);
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

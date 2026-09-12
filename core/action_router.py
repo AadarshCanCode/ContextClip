@@ -57,6 +57,30 @@ ACTIONS = {
         backend_action_id="system.open_clipboard_url",
         description="Open a copied URL in the default browser.",
     ),
+    "add_to_calendar": BubbleActionDefinition(
+        action_id="add_to_calendar",
+        label="Add to Calendar",
+        backend_action_id="calendar.add_clipboard",
+        description="Create a calendar event from copied context.",
+    ),
+    "add_to_tasks": BubbleActionDefinition(
+        action_id="add_to_tasks",
+        label="Create Task",
+        backend_action_id="tasks.add_clipboard",
+        description="Create a local task from copied context.",
+    ),
+    "save_context": BubbleActionDefinition(
+        action_id="save_context",
+        label="Save Context",
+        backend_action_id="context.save_clipboard",
+        description="Save the copied context locally.",
+    ),
+    "find_related_context": BubbleActionDefinition(
+        action_id="find_related_context",
+        label="Related",
+        backend_action_id="context.find_related",
+        description="Find related recent clipboard context.",
+    ),
     "search_references": BubbleActionDefinition(
         action_id="search_references",
         label="Search refs",
@@ -84,19 +108,31 @@ def get_bubble_action_ids(context: ContextResult) -> list[str]:
     intent = context.intent.strip().lower()
 
     if intent == "debug_error" or content_type == "error":
-        return ["help_fix", "explain", "search_references"]
-    if intent == "respond_to_message" or content_type == "email":
-        return ["summarize", "draft_reply", "copy_context"]
+        return ["help_fix", "explain", "find_related_context"]
     if intent == "track_deadline" or content_type == "deadline":
-        return ["summarize", "extract_information", "copy_context"]
+        return ["add_to_calendar", "add_to_tasks", "save_context"]
+    if intent == "follow_instructions":
+        return ["open", "add_to_tasks", "save_context"]
+    if intent == "respond_to_message" or content_type == "email":
+        if _has_action_url(context):
+            return ["open", "add_to_tasks", "save_context"]
+        return ["summarize", "draft_reply", "save_context"]
     if intent == "open_resource" or content_type == "url":
-        return ["open", "summarize", "search_references"]
+        return ["open", "summarize", "save_context"]
     if content_type == "code":
-        return ["explain", "help_fix", "copy_context"]
-    if content_type in {"documentation", "announcement"}:
-        return ["summarize", "extract_information", "copy_context"]
-    return ["summarize", "explain", "copy_context"]
+        return ["explain", "help_fix", "save_context"]
+    if content_type == "announcement":
+        if intent == "follow_instructions":
+            return ["summarize", "extract_information", "save_context"]
+        return ["summarize", "save_context", "extract_information"]
+    if content_type == "documentation":
+        return ["explain", "summarize", "save_context"]
+    return ["summarize", "explain", "save_context"]
 
 
 def get_bubble_actions(context: ContextResult) -> list[BubbleActionDefinition]:
     return [ACTIONS[action_id] for action_id in get_bubble_action_ids(context)]
+
+
+def _has_action_url(context: ContextResult) -> bool:
+    return any("url" in entity.type.lower() for entity in context.entities)
