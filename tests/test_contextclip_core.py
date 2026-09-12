@@ -8,6 +8,10 @@ from unittest.mock import patch
 
 os.environ.setdefault("CONTEXTCLIP_DISABLE_DOTENV", "1")
 
+from fastapi.testclient import TestClient
+
+from apps.api_server import create_app
+from apps.agent import ContextClipAgent
 from core.actions import BackendActionBroker
 from core.action_router import get_bubble_action_ids
 from core.config import load_env_file
@@ -261,6 +265,60 @@ class ContextClipCoreTests(unittest.TestCase):
         self.assertEqual(get_bubble_action_ids(error_context), ["help_fix", "explain", "search_references"])
         self.assertEqual(url_context.content_type, "url")
         self.assertEqual(get_bubble_action_ids(url_context), ["open", "summarize", "search_references"])
+
+    def test_desktop_api_exposes_health_events_actions_and_settings(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            try:
+                events, _edges, _blocks = self._repos(Path(tmp))
+                agent = ContextClipAgent(data_dir=Path(tmp))
+                events.insert(_event("evt_api", 1, EventType.COPY, "vs_code", "ERR_CONNECTION_REFUSED 127.0.0.1:5432"))
+
+                app = create_app(agent=agent, data_dir=Path(tmp), start_agent=False)
+                with TestClient(app) as client:
+                    self.assertTrue(client.get("/health").json()["ok"])
+                    self.assertEqual(client.get("/stats").json()["total_events"], 1)
+                    self.assertEqual(len(client.get("/events/recent?limit=5").json()["events"]), 1)
+                    self.assertIn("actions", client.get("/actions").json())
+                    settings = client.get("/settings/status").json()
+                    self.assertIn("openrouter", settings)
+                    self.assertIn("exa", settings)
+            finally:
+                close_connection()
+
+    def test_desktop_api_action_failure_is_structured(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            try:
+                agent = ContextClipAgent(data_dir=Path(tmp))
+                app = create_app(agent=agent, data_dir=Path(tmp), start_agent=False)
+                with TestClient(app) as client:
+                    response = client.post("/actions/run", json={"action_id": "missing.action", "args": {}})
+                    self.assertEqual(response.status_code, 404)
+                    self.assertIn("Unknown backend action", response.json()["detail"])
+            finally:
+                close_connection()
+
+    def test_desktop_event_stream_copy_emits_bubble_and_paste_dismisses(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            try:
+                agent = ContextClipAgent(data_dir=Path(tmp))
+                app = create_app(agent=agent, data_dir=Path(tmp), start_agent=False)
+                runtime = app.state.runtime
+
+                with patch.dict(os.environ, {"CONTEXTCLIP_BUBBLE_ANALYZER": "local"}):
+                    with TestClient(app) as client:
+                        with client.websocket_connect("/events") as websocket:
+                            runtime.handle_event(_event("evt_ws_copy", 1, EventType.COPY, "word", "Project review Tuesday 3 PM"))
+                            copy_payload = websocket.receive_json()
+                            self.assertEqual(copy_payload["type"], "copy")
+                            self.assertTrue(copy_payload["bubble"]["visible"])
+
+                            runtime.handle_event(_event("evt_ws_paste", 2, EventType.PASTE, "word", "Project review Tuesday 3 PM"))
+                            paste_payload = websocket.receive_json()
+                            while paste_payload["type"] != "paste":
+                                paste_payload = websocket.receive_json()
+                            self.assertFalse(paste_payload["bubble"]["visible"])
+            finally:
+                close_connection()
 
 
 if __name__ == "__main__":

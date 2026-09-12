@@ -1,8 +1,8 @@
-# ContextClip v4 Backend
+# ContextClip v4 Desktop
 
 ContextClip is a Windows desktop workflow-memory agent built around copy and paste events. Every copy is one immutable event, every paste is a separate immutable event, and each event can carry window metadata, payload metadata, screenshot references, graph links, and plugin context.
 
-The active desktop surface is a native Tkinter copy bubble. The web dashboard and tray app are removed from the active code path.
+The active desktop surface is an Electron + React shell backed by the Python clipboard agent. The older Tkinter bubble remains available as a lightweight fallback through `python main.py`.
 
 ## What It Does
 
@@ -13,7 +13,9 @@ The active desktop surface is a native Tkinter copy bubble. The web dashboard an
 - Serializes LLM-bound event windows as TOON and user exports as Markdown.
 - Uses OpenRouter for optional seven-event compression.
 - Uses Exa Search for optional clipboard reference search.
-- Shows a native desktop bubble near the copy location with routed actions.
+- Exposes a local-only API for the Electron dashboard and overlay bubble.
+- Shows a desktop bubble near the copy location with routed actions.
+- Renders a live dashboard with app cards, recent context, AI actions, and settings status.
 
 ## Install
 
@@ -21,6 +23,7 @@ The active desktop surface is a native Tkinter copy bubble. The web dashboard an
 python -m venv .venv
 .\.venv\Scripts\activate
 pip install -r requirements.txt
+npm install
 ```
 
 ## Environment
@@ -42,6 +45,18 @@ Run the native desktop bubble agent:
 
 ```powershell
 python main.py
+```
+
+Run the Electron desktop shell:
+
+```powershell
+npm run dev
+```
+
+Run the local API used by Electron:
+
+```powershell
+python main.py --agent-api
 ```
 
 Run the headless clipboard agent:
@@ -102,8 +117,11 @@ Screenshots are captured only at copy or paste event boundaries. Restricted clip
 ```text
 main.py                  backend CLI entry point
 apps/agent.py            clipboard agent and backend API facade
+apps/api_server.py       local FastAPI/WebSocket bridge for Electron
 apps/bubble.py           native Tkinter context bubble
 apps/bubble_runtime.py   desktop bubble app runner
+desktop/                 Electron main/preload process
+src/                     React dashboard and overlay bubble
 core/                    config, actions, action routing, context analysis, contracts, capture, graph, memory, privacy
 storage/                 SQLite schema and repositories
 cloud/                   TOON, Markdown export, OpenRouter, Exa search, clipboard analysis/actions

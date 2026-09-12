@@ -409,6 +409,9 @@ class ContextClipAgent:
     def get_active_events(self, n: int = 7):
         return self._memory.get_active_events(n)
 
+    def get_recent_events(self, n: int = 50):
+        return self._event_repo.get_recent(n)
+
     def get_context_blocks(self, n: int = 10):
         return self._memory.get_context_blocks(n)
 
@@ -436,6 +439,7 @@ class ContextClipAgent:
         import pyperclip
 
         markdown = self.export_active_context_markdown(n)
+        self.suppress_clipboard_text(markdown)
         pyperclip.copy(markdown)
         return markdown
 

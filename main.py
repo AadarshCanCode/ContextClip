@@ -5,6 +5,7 @@ Usage:
   python main.py                    -> run desktop bubble agent
   python main.py --bubble           -> run desktop bubble agent
   python main.py --agent            -> run headless clipboard agent service
+  python main.py --agent-api        -> run local API for Electron
   python main.py --dump             -> dump current LLM context JSON
   python main.py --list-actions     -> list concrete backend actions
   python main.py --action ACTION_ID -> run one concrete backend action
@@ -46,6 +47,14 @@ def run_desktop_bubble() -> None:
 
     app = ContextClipBubbleApp()
     app.start()
+
+
+def run_agent_api() -> None:
+    """Start the local-only API used by the Electron desktop shell."""
+    from apps.api_server import run_api_server
+
+    port = get_int("CONTEXTCLIP_API_PORT", 8765)
+    run_api_server(port=port)
 
 
 def dump_context() -> None:
@@ -133,6 +142,11 @@ def main() -> None:
         help="Run headless clipboard agent service",
     )
     parser.add_argument(
+        "--agent-api",
+        action="store_true",
+        help="Run local API service for the Electron desktop shell",
+    )
+    parser.add_argument(
         "--dump",
         action="store_true",
         help="Dump current LLM context JSON to stdout",
@@ -180,7 +194,9 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    if args.agent:
+    if args.agent_api:
+        run_agent_api()
+    elif args.agent:
         run_agent_only()
     elif args.dump:
         dump_context()

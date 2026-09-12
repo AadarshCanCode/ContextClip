@@ -1,47 +1,16 @@
-# Python
 __pycache__/
 *.py[cod]
-*$py.class
-*.so
-
-# Virtual environments
-.venv/
-venv/
-env/
-ENV/
-
-# Packaging and build output
-build/
-dist/
-*.egg-info/
-.eggs/
-pip-wheel-metadata/
-
-# Test and tooling caches
 .pytest_cache/
 .mypy_cache/
-.ruff_cache/
-.coverage
-.coverage.*
-htmlcov/
 
-# Local branch inspection checkouts
-.branch-checkouts/
-
-# Local runtime data
-contextclip_data/*
-!contextclip_data/.gitkeep
-
-# Environment and secrets
 .env
-.env.*
-!.env.example
+.venv/
+venv/
+contextclip_data/
 
-# Logs
-*.log
+node_modules/
+dist/
+dist-electron/
+.vite/
 
-# Editor and OS files
-.vscode/
-.idea/
-.DS_Store
-Thumbs.db
+.branch-checkouts/

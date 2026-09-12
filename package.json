@@ -1,0 +1,29 @@
+{
+  "name": "contextclip-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ContextClip Electron desktop shell backed by the Python clipboard agent.",
+  "main": "desktop/main.cjs",
+  "scripts": {
+    "dev": "concurrently -k \"vite --host 127.0.0.1 --port 5173\" \"wait-on http://127.0.0.1:5173 && electron .\"",
+    "build": "tsc && vite build",
+    "preview": "vite preview --host 127.0.0.1 --port 4173",
+    "electron": "electron ."
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "lucide-react": "^0.468.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "vite": "^6.0.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/react": "^18.3.17",
+    "@types/react-dom": "^18.3.5",
+    "concurrently": "^9.1.0",
+    "electron": "^44.3.0",
+    "typescript": "^5.7.2",
+    "wait-on": "^8.0.1"
+  }
+}

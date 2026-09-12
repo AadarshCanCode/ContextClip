@@ -4,7 +4,7 @@ Last updated: 2026-09-12
 
 ## Executive State
 
-ContextClip is currently a Windows desktop workflow-memory agent with a native Tkinter copy bubble and a backend CLI. The tray app, web dashboard, and demo seeding path have been removed from the active code path. The usable surface today is the Python CLI in `main.py`, the native bubble runtime in `apps/bubble_runtime.py`, the long-running clipboard agent in `apps/agent.py`, and a concrete backend action broker in `core/actions.py`.
+ContextClip is currently a Windows desktop workflow-memory agent with an Electron + React dashboard, an Electron overlay bubble, a local Python API bridge, a native Tkinter fallback bubble, and a backend CLI. The tray app and demo seeding path remain removed from the active code path. The usable surfaces today are the Electron shell through `npm run dev`, the Python CLI in `main.py`, the local API in `apps/api_server.py`, the long-running clipboard agent in `apps/agent.py`, and the concrete backend action broker in `core/actions.py`.
 
 The app is intended to observe meaningful clipboard movement across desktop applications. A copy is stored as an immutable event. A paste is stored as a separate immutable event. The backend then links related events into a reference graph, maintains a seven-event active memory window, creates compressed ContextBlocks, and can export context for LLM usage.
 
@@ -50,6 +50,7 @@ Supported commands:
 python main.py
 python main.py --bubble
 python main.py --agent
+python main.py --agent-api
 python main.py --dump
 python main.py --list-actions
 python main.py --action storage.stats
@@ -109,8 +110,14 @@ main.py
 apps/agent.py
   Runtime orchestrator and backend API facade
 
+apps/api_server.py
+  Local FastAPI/WebSocket bridge for Electron
+
 apps/bubble.py and apps/bubble_runtime.py
   Native desktop bubble UI and runner
+
+desktop/ and src/
+  Electron main/preload process, React dashboard, and React overlay bubble
 
 core/
   Domain contracts, capture, privacy, graph, memory, actions, action routing, context analysis, config
@@ -171,22 +178,22 @@ Every seven events, the memory manager closes the current active window and crea
 
 ## Bubble Flow
 
-The native bubble flow is:
+The Electron bubble flow is:
 
 ```text
 User presses Ctrl+C
   -> Agent captures and stores copy event
   -> Copy-time text anchor is stored in event plugin_context
-  -> Bubble runtime receives the copy event through on_event
-  -> Tkinter shows an immediate analyzing bubble near the caret/control anchor
-  -> OpenRouter analyzer classifies copied text when configured
+  -> API publishes an immediate copy event over WebSocket
+  -> Electron overlay window appears near the caret/control anchor
+  -> API analyzes copied text in a background thread
   -> Local analyzer is used if OpenRouter is disabled, unavailable, or blocked
-  -> Deterministic action router selects up to three buttons
-  -> Button clicks execute BackendActionBroker actions
-  -> Results are printed to terminal and summarized in the bubble
+  -> Deterministic action router selects up to three buttons for the overlay
+  -> Button clicks execute BackendActionBroker actions through the local API
+  -> Results are streamed back to the dashboard and overlay
 ```
 
-Paste events are still recorded and correlated by the backend, but the desktop bubble runtime now treats paste as a dismissal signal. It hides any active bubble and does not open a new one for paste.
+Paste events are still recorded and correlated by the backend, but both desktop bubble runtimes treat paste as a dismissal signal. Paste hides any active bubble and does not open a new one.
 
 When a bubble action offers "Copy result", the runtime marks that app-written clipboard value as suppressed before copying it. That prevents ContextClip's polling fallback from treating its own action output as a fresh user copy.
 
@@ -411,6 +418,8 @@ These checks passed:
 ```powershell
 python -m compileall main.py apps core cloud storage plugins tests
 python -m unittest discover -s tests
+npm run build
+npm audit --omit=dev --json
 python main.py --help
 python main.py --list-actions
 python main.py --action storage.stats
@@ -426,34 +435,36 @@ python main.py --action references.search_clipboard --num-results 2
 python main.py --search-clipboard --num-results 2
 ```
 
+The Electron desktop shell was run with:
+
+```powershell
+npm run dev
+```
+
+The live API health endpoint returned `ok: true`, a real clipboard change was captured as sequence 20, and the returned event included an `anchor` coordinate for overlay placement.
+
 ## Current Data State
 
-The current local store is effectively empty from the action checks:
+The current local store now contains real capture checks from desktop verification:
 
 ```json
 {
-  "copies_today": 0,
+  "copies_today": 20,
   "pastes_today": 0,
-  "total_events": 0,
-  "unique_apps": 0
+  "total_events": 20,
+  "unique_apps": 2
 }
 ```
 
-The graph is also empty:
-
-```text
-(empty graph)
-```
-
-This is a clean usable state, not a seeded demo state.
+This is live verification data, not seeded demo data.
 
 ## Known Gaps
 
-The backend is usable, but several parts are still not complete product behavior:
+The desktop app is usable, but several parts are still not complete product behavior:
 
 - No packaged desktop installer or Windows service runner yet.
-- No web dashboard or tray UI right now by user request.
-- Native bubble UI exists, but has not been manually clicked through in this Codex run because that requires an interactive desktop copy/action flow.
+- No tray UI right now by user request.
+- Electron overlay bubble is implemented and wired to copy/paste WebSocket events; native-window visual inspection is limited in this Codex environment, but the renderer, API stream, and copy anchor payload were verified.
 - Plugin `execute()` methods are stubs.
 - Manual capture actions can work, but they have side effects and need deliberate use.
 - Exa cannot return real references until `EXA_API_KEY` is set.
@@ -465,13 +476,13 @@ The backend is usable, but several parts are still not complete product behavior
 
 ## Near-Term Recommended Build Path
 
-1. Fill `.env` with real `OPENROUTER_API_KEY` and `EXA_API_KEY`.
-2. Run `python main.py` and perform normal copy/paste actions across desktop apps.
+1. Run `npm run dev` for the Electron desktop shell.
+2. Perform normal copy/paste actions across desktop apps.
 3. Use `python main.py --action storage.stats` to confirm events are being captured.
 4. Use `python main.py --action graph.summary` to inspect correlation.
 5. Use `python main.py --action context.export_markdown` to inspect active LLM context.
 6. Use `python main.py --action references.search_clipboard` after copying a real technical query or reference.
-7. Decide whether the next surface should be a native desktop shell, a background service, or a minimal local API.
+7. Package the Electron shell when the interactive flow is ready for installer work.
 
 ## Architectural Principle Going Forward
 
@@ -481,9 +492,11 @@ The clean direction is:
 - Keep `storage/` as the database boundary.
 - Keep `cloud/` as explicit cloud integrations.
 - Keep `apps/agent.py` as the capture/runtime orchestrator.
+- Keep `apps/api_server.py` as the local Electron bridge.
+- Keep `desktop/` and `src/` as the Electron/React shell.
 - Keep `apps/bubble_runtime.py` as the desktop interaction runner.
 - Keep `core/actions.py` as the actual command/action execution surface.
 - Keep plugins as enrichers until their execution hooks are made real.
 - Avoid reintroducing demo or seed behavior into the active path.
 
-The result should be a desktop backend that can be trusted with real workflows first, then wrapped by a UI later if needed.
+The result should remain a desktop app whose UI is driven by real captured workflow data, with the Python backend retaining ownership of capture, storage, graph, privacy, Exa, and OpenRouter behavior.

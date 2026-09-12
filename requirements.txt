@@ -27,3 +27,7 @@ openai>=1.0.0
 # Exa-powered clipboard reference search
 # Set EXA_API_KEY env var to enable reference search.
 exa-py==2.14.0
+
+# Local desktop API for the Electron shell
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0

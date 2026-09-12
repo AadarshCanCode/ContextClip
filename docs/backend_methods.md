@@ -8,6 +8,7 @@ This reference tracks the active desktop backend and native bubble only. Removed
 | --- | --- | --- |
 | `configure_console_io` | `main.py` | Prefers UTF-8 CLI output on Windows consoles. |
 | `run_agent_only` | `main.py` | Starts the headless clipboard agent service. |
+| `run_agent_api` | `main.py` | Starts the local API service used by Electron. |
 | `run_desktop_bubble` | `main.py` | Starts the native desktop bubble agent. |
 | `dump_context` | `main.py` | Prints the current LLM context JSON. |
 | `search_clipboard` | `main.py` | Runs Exa reference search for current clipboard text. |
@@ -108,6 +109,19 @@ This reference tracks the active desktop backend and native bubble only. Removed
 | `ContextClipAgent.search_clipboard_references` | `apps/agent.py` | Searches current clipboard references through Exa. |
 | `ContextClipAgent._new_workflow_id` | `apps/agent.py` | Creates workflow IDs. |
 | `ContextClipAgent._print_copy_summary` | `apps/agent.py` | Prints a captured copy summary for backend logs. |
+
+## Local Desktop API
+
+| Method | Reference | Purpose |
+| --- | --- | --- |
+| `RunActionRequest` | `apps/api_server.py` | Validates action execution requests from Electron. |
+| `EventBroadcaster` | `apps/api_server.py` | Fans copy, paste, context block, and action result events out to WebSocket clients. |
+| `ContextClipApiRuntime` | `apps/api_server.py` | Owns the agent, action broker, event callbacks, and analysis publishing. |
+| `create_app` | `apps/api_server.py` | Builds the FastAPI app with local endpoints and WebSocket route. |
+| `run_api_server` | `apps/api_server.py` | Runs the local API on `127.0.0.1`. |
+| `_event_payload` | `apps/api_server.py` | Converts captured events into UI-safe JSON without raw clipboard text. |
+| `_bubble_payload` | `apps/api_server.py` | Builds overlay payloads for copy, analysis, and paste dismissal. |
+| `_event_anchor` | `apps/api_server.py` | Extracts copy/paste screen anchors from event metadata. |
 
 ## Core Contracts
 
