@@ -87,7 +87,7 @@ def compute_workflow_score(event_a: Event, event_b: Event) -> float:
     Compute the workflow similarity score between two events.
     Uses the formula from spec §11.2.
     """
-    # For demo: semantic similarity approximated by entity overlap
+    # Lightweight semantic similarity approximated by entity overlap.
     semantic = _entity_overlap_score(event_a, event_b) * 0.6
     entity = _entity_overlap_score(event_a, event_b)
     time_prox = _time_proximity_score(event_a, event_b)
@@ -152,6 +152,12 @@ class ReferenceGraph:
         Returns the source copy event ID, or None.
         Implements spec §11.1 paste correlation algorithm.
         """
+        if self._events.get_by_id(paste_event.id) is None:
+            return self.find_source_for_paste(paste_event)
+        return self.record_paste(paste_event)
+
+    def find_source_for_paste(self, paste_event: Event) -> Optional[str]:
+        """Find the best source copy without mutating graph storage."""
         with self._lock:
             # Step 1: exact hash match
             payload_hash = paste_event.clipboard.payload_hash
@@ -159,22 +165,45 @@ class ReferenceGraph:
                 source_id = self._copy_by_hash[payload_hash]
                 source_event = self._events.get_by_id(source_id)
                 if source_event:
-                    # Step 2: time check (paste must come after copy)
-                    score = compute_workflow_score(source_event, paste_event)
-                    self._add_edge(
-                        from_id=source_id,
-                        to_id=paste_event.id,
-                        relation=EdgeRelation.PASTED_INTO,
-                        score=score,
-                        source="hash_match",
-                    )
                     return source_id
+
+            persisted = self._events.find_recent_copy_by_hash(payload_hash)
+            if persisted:
+                self._copy_by_hash[payload_hash] = persisted.id
+                self._last_copy_event_id = persisted.id
+                return persisted.id
 
             # Fallback: use last copy event
             if self._last_copy_event_id:
                 return self._last_copy_event_id
 
             return None
+
+    def record_paste(self, paste_event: Event, source_id: Optional[str] = None) -> Optional[str]:
+        """Add the paste relation after the paste event has been persisted."""
+        with self._lock:
+            source_id = source_id or self.find_source_for_paste(paste_event)
+            if not source_id or source_id == paste_event.id:
+                return source_id
+
+            source_event = self._events.get_by_id(source_id)
+            if not source_event:
+                return source_id
+
+            score = compute_workflow_score(source_event, paste_event)
+            relation_source = (
+                "hash_match"
+                if source_event.clipboard.payload_hash == paste_event.clipboard.payload_hash
+                else "inferred"
+            )
+            self._add_edge(
+                from_id=source_id,
+                to_id=paste_event.id,
+                relation=EdgeRelation.PASTED_INTO,
+                score=score,
+                source=relation_source,
+            )
+            return source_id
 
     def add_edge(
         self,

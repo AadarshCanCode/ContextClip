@@ -1,9 +1,10 @@
 """
-cloud/compressor.py — Cloud context compression service adapter.
+cloud/compressor.py - OpenRouter context compression adapter.
 
-Implements spec §12. Uses OpenAI (or compatible) to compress a 7-event
-window into a structured ContextBlock. Falls back to heuristic compression
-when OPENAI_API_KEY is not set or the request fails.
+Implements spec section 12. Uses OpenRouter's OpenAI-compatible API to
+compress a 7-event window into a structured ContextBlock. Falls back to
+heuristic compression when OPENROUTER_API_KEY is not set, a restricted event
+is present, or the request fails.
 
 Pipeline (spec §12.1):
   local event window
@@ -26,10 +27,17 @@ import uuid
 from datetime import datetime, timezone
 from typing import List, Optional
 
+from core.config import load_env_file
 from core.contracts import ContextBlock, Event
 from cloud.toon import encode_events_toon
 from cloud.markdown_export import export_events_markdown
 
+load_env_file()
+
+OPENROUTER_BASE_URL = os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+OPENROUTER_MODEL = os.environ.get("OPENROUTER_MODEL", "openai/gpt-4o-mini")
+OPENROUTER_APP_TITLE = os.environ.get("OPENROUTER_APP_TITLE", "ContextClip")
+OPENROUTER_SITE_URL = os.environ.get("OPENROUTER_SITE_URL", "https://contextclip.local")
 
 SYSTEM_PROMPT = """You are ContextClip, a workflow memory agent.
 You receive a TOON-encoded window of 7 clipboard/paste events.
@@ -56,30 +64,57 @@ Return valid JSON matching this schema exactly:
 
 def compress_with_llm(events: List[Event], block_num: int) -> ContextBlock:
     """
-    Compress events into a ContextBlock using an LLM.
-    Falls back to heuristic compression if LLM is unavailable.
+    Compress events into a ContextBlock using OpenRouter.
+    Falls back to heuristic compression if OpenRouter is unavailable or blocked
+    by local privacy policy.
     """
-    api_key = os.environ.get("OPENAI_API_KEY")
+    api_key = os.environ.get("OPENROUTER_API_KEY")
+
+    restricted_events = [
+        event.id for event in events
+        if getattr(event.privacy_class, "value", event.privacy_class) == "restricted"
+    ]
+    if restricted_events:
+        block = _heuristic_compress(events, block_num)
+        block.model_info = {
+            "method": "heuristic",
+            "reason": "restricted_event_blocked_openrouter_upload",
+        }
+        block.safety_redactions = [f"Blocked cloud compression for {len(restricted_events)} restricted event(s)."]
+        return block
 
     if api_key:
         try:
-            return _llm_compress(events, block_num, api_key)
+            return _openrouter_compress(events, block_num, api_key)
         except Exception as exc:
-            print(f"[Compressor] LLM compression failed ({exc}), using heuristics.")
+            print(f"[Compressor] OpenRouter compression failed ({exc}), using heuristics.")
 
     # Heuristic fallback (always available offline)
     return _heuristic_compress(events, block_num)
 
 
-def _llm_compress(events: List[Event], block_num: int, api_key: str) -> ContextBlock:
+def _openrouter_compress(events: List[Event], block_num: int, api_key: str) -> ContextBlock:
     from openai import OpenAI
-    client = OpenAI(api_key=api_key)
+
+    headers = {}
+    if OPENROUTER_SITE_URL:
+        headers["HTTP-Referer"] = OPENROUTER_SITE_URL
+    if OPENROUTER_APP_TITLE:
+        headers["X-Title"] = OPENROUTER_APP_TITLE
+
+    client_kwargs = {
+        "api_key": api_key,
+        "base_url": OPENROUTER_BASE_URL,
+    }
+    if headers:
+        client_kwargs["default_headers"] = headers
+    client = OpenAI(**client_kwargs)
 
     toon = encode_events_toon(events)
     user_msg = f"TOON payload:\n{toon}\n\nProduce the structured JSON context block."
 
     response = client.chat.completions.create(
-        model="gpt-4o-mini",
+        model=OPENROUTER_MODEL,
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_msg},
@@ -100,7 +135,11 @@ def _llm_compress(events: List[Event], block_num: int, api_key: str) -> ContextB
         decisions=data.get("decisions", []),
         questions=data.get("open_questions", []),
         transitions=data.get("app_transitions", []),
-        model_info={"model": "gpt-4o-mini", "method": "llm"},
+        model_info={
+            "method": "openrouter",
+            "model": OPENROUTER_MODEL,
+            "base_url": OPENROUTER_BASE_URL,
+        },
     )
 
 

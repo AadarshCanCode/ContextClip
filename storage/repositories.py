@@ -102,6 +102,18 @@ class EventRepository:
         ).fetchall()
         return list(reversed([self._row_to_event(r) for r in rows]))
 
+    def find_recent_copy_by_hash(self, payload_hash: str) -> Optional[Event]:
+        row = self._conn().execute(
+            """
+            SELECT * FROM events
+            WHERE type='copy' AND payload_hash=?
+            ORDER BY seq DESC
+            LIMIT 1
+            """,
+            (payload_hash,),
+        ).fetchone()
+        return self._row_to_event(row) if row else None
+
     def get_by_workflow(self, workflow_id: str) -> List[Event]:
         rows = self._conn().execute(
             "SELECT * FROM events WHERE workflow_id=? ORDER BY seq", (workflow_id,)

@@ -19,12 +19,33 @@ _local = threading.local()
 
 def get_connection(db_path: Path) -> sqlite3.Connection:
     """Return a thread-local connection to the SQLite database."""
-    if not hasattr(_local, "conn") or _local.conn is None:
-        _local.conn = sqlite3.connect(str(db_path), check_same_thread=False)
+    resolved = str(db_path.resolve())
+    if (
+        not hasattr(_local, "conn")
+        or _local.conn is None
+        or getattr(_local, "db_path", None) != resolved
+    ):
+        if hasattr(_local, "conn") and _local.conn is not None:
+            try:
+                _local.conn.close()
+            except Exception:
+                pass
+        _local.conn = sqlite3.connect(resolved, check_same_thread=False)
+        _local.db_path = resolved
         _local.conn.row_factory = sqlite3.Row
         _local.conn.execute("PRAGMA journal_mode=WAL")
         _local.conn.execute("PRAGMA foreign_keys=ON")
     return _local.conn
+
+
+def close_connection() -> None:
+    """Close the thread-local SQLite connection, if one is open."""
+    if hasattr(_local, "conn") and _local.conn is not None:
+        try:
+            _local.conn.close()
+        finally:
+            _local.conn = None
+            _local.db_path = None
 
 
 SCHEMA_SQL = """
@@ -164,21 +185,17 @@ CREATE TRIGGER IF NOT EXISTS events_fts_insert AFTER INSERT ON events BEGIN
 END;
 """
 
-DEFAULT_HOTKEYS = [
-    ("hk_dashboard", "win+shift+c", "open_dashboard"),
-    ("hk_copy_context", "win+shift+x", "copy_context_markdown"),
-    ("hk_pause", "win+shift+p", "pause_capture"),
-    ("hk_bubble", "win+shift+b", "show_bubble"),
-]
+DEFAULT_HOTKEYS = []
 
 
 def initialize(db_path: Path) -> None:
-    """Create the database schema and seed defaults. Idempotent."""
+    """Create the database schema and insert default backend records. Idempotent."""
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = get_connection(db_path)
     conn.executescript(SCHEMA_SQL)
 
-    # Seed default hotkeys
+    # The backend keeps the hotkeys table for compatibility, but fresh installs
+    # do not insert frontend command defaults while the UI is absent.
     for hk_id, accelerator, command_id in DEFAULT_HOTKEYS:
         conn.execute(
             "INSERT OR IGNORE INTO hotkeys(id, command_id, accelerator) VALUES (?,?,?)",
@@ -186,4 +203,3 @@ def initialize(db_path: Path) -> None:
         )
 
     conn.commit()
-    print(f"[Storage] Database initialized at {db_path}")

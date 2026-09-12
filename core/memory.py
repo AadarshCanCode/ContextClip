@@ -69,7 +69,9 @@ class ContextWindowManager:
         events = [self._events.get_by_id(eid) for eid in event_ids]
         events = [e for e in events if e is not None]
 
-        block = _build_context_block(events, self._block_counter)
+        from cloud.compressor import compress_with_llm
+
+        block = compress_with_llm(events, self._block_counter)
         self._block_counter += 1
 
         self._blocks.insert(block)

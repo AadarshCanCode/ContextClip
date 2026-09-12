@@ -2,7 +2,7 @@
 apps/agent.py — ContextClip Agent Service.
 
 Orchestrates: clipboard listener -> event capture -> graph -> memory ->
-context blocks -> plugin enrichment -> dashboard broadcast.
+context blocks -> plugin enrichment -> backend APIs.
 
 Implements spec §7.1 (Agent process) and §15 Phase 1+2.
 """
@@ -21,17 +21,8 @@ from typing import Callable, List, Optional
 # ---------------------------------------------------------------------------
 # Resolve paths so the agent can be run from any working directory
 # ---------------------------------------------------------------------------
-_HERE = Path(__file__).parent.parent
+_HERE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_HERE))
-
-# ---------------------------------------------------------------------------
-# Configuration
-# ---------------------------------------------------------------------------
-DATA_DIR = Path(os.environ.get("CONTEXTCLIP_DATA_DIR", _HERE / "contextclip_data"))
-DB_PATH = DATA_DIR / "contextclip.db"
-SCREENSHOT_DIR = DATA_DIR / "screenshots"
-COPY_SETTLE_MS = int(os.environ.get("CONTEXTCLIP_COPY_SETTLE_MS", "120"))
-
 
 from core.capture import (
     ClipboardListener,
@@ -40,6 +31,7 @@ from core.capture import (
     get_foreground_window,
     read_clipboard,
 )
+from core.config import get_int, load_env_file
 from core.contracts import (
     Event, EventType, GraphEdge, PasteMode, PayloadType, PrivacyClass,
 )
@@ -60,6 +52,18 @@ from plugins.browser import BrowserPlugin
 from plugins.outlook import OutlookPlugin
 from plugins.word import WordPlugin
 from plugins.terminal import TerminalPlugin
+
+
+load_env_file()
+
+
+# ---------------------------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------------------------
+DATA_DIR = Path(os.environ.get("CONTEXTCLIP_DATA_DIR", _HERE / "contextclip_data"))
+DB_PATH = DATA_DIR / "contextclip.db"
+SCREENSHOT_DIR = DATA_DIR / "screenshots"
+COPY_SETTLE_MS = get_int("CONTEXTCLIP_COPY_SETTLE_MS", 120)
 
 
 def _new_event_id() -> str:
@@ -83,7 +87,7 @@ class ContextClipAgent:
         on_block: Optional[Callable] = None,
     ) -> None:
         self._data_dir = data_dir
-        self._on_event = on_event    # broadcast to dashboard
+        self._on_event = on_event    # optional process-local subscriber
         self._on_block = on_block    # broadcast new context block
 
         # Initialize storage
@@ -155,12 +159,12 @@ class ContextClipAgent:
     # Copy handler
     # -----------------------------------------------------------------------
 
-    def _handle_copy(self) -> None:
+    def _handle_copy(self) -> Optional[Event]:
         time.sleep(COPY_SETTLE_MS / 1000.0)
 
         text = read_clipboard()
         if not text.strip():
-            return
+            return None
 
         clipboard = build_clipboard_payload(text)
 
@@ -171,7 +175,7 @@ class ContextClipAgent:
                 clipboard.payload_hash == self._last_recorded_hash
                 and (now - self._last_copy_time) < 0.5
             ):
-                return
+                return None
             self._last_recorded_hash = clipboard.payload_hash
             self._last_copy_time = now
 
@@ -179,13 +183,13 @@ class ContextClipAgent:
 
         # Exclusion check
         if self._exclusion.is_excluded(window.app_family, window.process_name, window.window_title):
-            print(f"[Agent] Excluded app — skipping: {window.app_family}")
-            return
+            print(f"[Agent] Excluded app; skipping: {window.app_family}")
+            return None
 
         # Privacy classification
         privacy = detect_privacy_class(text)
         if privacy == PrivacyClass.RESTRICTED:
-            print("[Agent] Restricted content detected — event recorded locally, cloud upload blocked.")
+            print("[Agent] Restricted content detected; event recorded locally, cloud upload blocked.")
 
         # Content type
         content_type = classify_content(text)
@@ -231,33 +235,34 @@ class ContextClipAgent:
             self._on_event(event)
 
         self._print_copy_summary(event, screenshot_ref)
+        return event
 
     # -----------------------------------------------------------------------
     # Paste handler
     # -----------------------------------------------------------------------
 
-    def _handle_paste(self) -> None:
+    def _handle_paste(self) -> Optional[Event]:
         window = get_foreground_window()
 
         # Exclusion check
         if self._exclusion.is_excluded(window.app_family, window.process_name, window.window_title):
-            return
+            return None
 
         # Read current clipboard to correlate with the source copy
         text = read_clipboard()
         if not text.strip():
-            return
+            return None
 
         clipboard = build_clipboard_payload(text)
         content_type = classify_content(text)
         privacy = detect_privacy_class(text)
 
-        screenshot_ref = self._screenshot_capture.capture(window, _new_event_id())
+        event_id = _new_event_id()
+        screenshot_ref = self._screenshot_capture.capture(window, event_id)
         if screenshot_ref:
             self._screenshot_repo.insert(screenshot_ref)
 
         seq = self._event_repo.next_seq()
-        event_id = _new_event_id()
 
         event = Event(
             id=event_id,
@@ -265,6 +270,7 @@ class ContextClipAgent:
             type=EventType.PASTE,
             timestamp_utc=_utc_now(),
             source_app=window,
+            destination_app=window,
             clipboard=clipboard,
             screenshot_id=screenshot_ref.id if screenshot_ref else None,
             privacy_class=privacy,
@@ -275,11 +281,23 @@ class ContextClipAgent:
         )
 
         # Correlate with source copy event
-        source_id = self._graph.correlate_paste(event)
+        source_id = self._graph.find_source_for_paste(event)
         if source_id:
             event.parent_event_id = source_id
 
+        # Plugin enrichment
+        for plugin in self._plugins:
+            if plugin.matches(window):
+                try:
+                    ctx = plugin.enrich(window, event)
+                    if ctx:
+                        event.plugin_context = ctx.context_data
+                        break
+                except Exception as exc:
+                    print(f"[Agent] Plugin {plugin.manifest.id} error: {exc}")
+
         self._event_repo.insert(event)
+        self._graph.record_paste(event, source_id)
         self._memory.push(event)
 
         if self._on_event:
@@ -290,20 +308,21 @@ class ContextClipAgent:
             f"src={source_id[:8] if source_id else 'none'} | "
             f"{clipboard.preview_text[:50]}"
         )
+        return event
 
     # -----------------------------------------------------------------------
     # Context window callback
     # -----------------------------------------------------------------------
 
     def _on_context_window_ready(self, events, block) -> None:
-        print(f"[Agent] Context window complete → {block.id} ({block.one_line_goal})")
+        print(f"[Agent] Context window complete -> {block.id} ({block.one_line_goal})")
         if self._on_block:
             self._on_block(block)
         # Start fresh workflow for next window
         self._current_workflow_id = self._new_workflow_id()
 
     # -----------------------------------------------------------------------
-    # Public API (used by dashboard)
+    # Public backend API
     # -----------------------------------------------------------------------
 
     def get_active_events(self, n: int = 7):
@@ -325,6 +344,32 @@ class ContextClipAgent:
         ref = self._screenshot_repo.get_by_id(screenshot_id)
         return ref.local_path if ref else None
 
+    def export_active_context_markdown(self, n: int = 7) -> str:
+        """Render the active event window as Markdown."""
+        from cloud.markdown_export import export_events_markdown
+
+        return export_events_markdown(self.get_active_events(n))
+
+    def copy_active_context_markdown(self, n: int = 7) -> str:
+        """Render the active event window as Markdown and copy it to the OS clipboard."""
+        import pyperclip
+
+        markdown = self.export_active_context_markdown(n)
+        pyperclip.copy(markdown)
+        return markdown
+
+    def summarize_graph(self) -> str:
+        """Return a compact text summary of the current reference graph."""
+        return self._graph.summarize()
+
+    def record_current_clipboard_copy(self) -> Optional[Event]:
+        """Manually record the current clipboard text as a copy event."""
+        return self._handle_copy()
+
+    def record_current_clipboard_paste(self) -> Optional[Event]:
+        """Manually record the current clipboard text as a paste event."""
+        return self._handle_paste()
+
     def dump_llm_context(self) -> dict:
         """Build an LLM-ready context payload from active events."""
         from cloud.toon import encode_events_toon
@@ -335,6 +380,25 @@ class ContextClipAgent:
             "stats": self.get_stats(),
             "context_blocks": [b.to_dict() for b in self.get_context_blocks(3)],
         }
+
+    def search_clipboard_references(
+        self,
+        search_type: str = "auto",
+        num_results: int = 10,
+        include_domains: Optional[List[str]] = None,
+        exclude_domains: Optional[List[str]] = None,
+        max_age_hours: Optional[int] = None,
+    ):
+        """Search web references for the current clipboard text through Exa."""
+        from cloud.exa_search import search_clipboard_references
+
+        return search_clipboard_references(
+            search_type=search_type,
+            num_results=num_results,
+            include_domains=include_domains,
+            exclude_domains=exclude_domains,
+            max_age_hours=max_age_hours,
+        )
 
     # -----------------------------------------------------------------------
     # Internal helpers

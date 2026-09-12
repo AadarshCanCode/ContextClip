@@ -44,15 +44,18 @@ except ImportError:
 
 from pynput import keyboard
 
+from core.config import get_int, load_env_file
 from core.contracts import AppRef, ClipboardPayload, PayloadType, ScreenshotRef
 from core.privacy import normalize_text, safe_preview
+
+load_env_file()
 
 # ---------------------------------------------------------------------------
 # Configuration (overridable via env vars)
 # ---------------------------------------------------------------------------
 
-COPY_SETTLE_MS = int(os.environ.get("CONTEXTCLIP_COPY_SETTLE_MS", "120"))
-MAX_CLIPBOARD_CHARS = int(os.environ.get("CONTEXTCLIP_MAX_CHARS", "50000"))
+COPY_SETTLE_MS = get_int("CONTEXTCLIP_COPY_SETTLE_MS", 120)
+MAX_CLIPBOARD_CHARS = get_int("CONTEXTCLIP_MAX_CHARS", 50000)
 SCREENSHOT_MODE = os.environ.get("CONTEXTCLIP_SCREENSHOT_MODE", "active_window")
 
 APP_FAMILY_MAP = {

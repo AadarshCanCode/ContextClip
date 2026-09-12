@@ -1,29 +1,29 @@
-# ContextClip v4 — Python prototype dependencies
-# Install with: pip install -r requirements.txt
+# ContextClip v4 — Python dependencies
+# Install: pip install -r requirements.txt
 
-# Clipboard
+# Clipboard reading
 pyperclip>=1.8.2
 
-# Global keyboard listener
+# Global keyboard listener (Ctrl+C / Ctrl+V detection)
 pynput>=1.7.6
 
-# Screenshot / image processing
+# Screenshot capture / image processing
 Pillow>=10.0.0
 
-# System tray icon
-pystray>=0.19.5
-
-# Process / window inspection
+# System process / window inspection
 psutil>=5.9.0
 
-# Windows APIs (Win32) — Windows only
+# Windows APIs — Win32 window metadata, HWND, process info
 pywin32>=306; sys_platform == "win32"
 
-# Optional: multiple monitor screenshot
+# Optional: multi-monitor screenshot support
 mss>=9.0.1
 
-# Web dashboard
-flask>=3.0.0
-
-# Optional: LLM compression (set OPENAI_API_KEY env var to enable)
+# OpenRouter-powered context compression
+# Set OPENROUTER_API_KEY env var to enable cloud compression.
+# The OpenAI SDK is used only as OpenRouter's compatible client.
 openai>=1.0.0
+
+# Exa-powered clipboard reference search
+# Set EXA_API_KEY env var to enable reference search.
+exa-py==2.14.0

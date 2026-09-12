@@ -68,6 +68,7 @@ _SECRET_PATTERNS = [
     re.compile(r"\b\d{3}-\d{2}-\d{4}\b"),  # SSN-like
     re.compile(r"ghp_[A-Za-z0-9]{36}"),    # GitHub PAT
     re.compile(r"sk-[A-Za-z0-9]{48}"),     # OpenAI key
+    re.compile(r"sk-or-v1-[A-Za-z0-9_-]+"),  # OpenRouter key
 ]
 
 
@@ -140,4 +141,4 @@ def normalize_text(text: str) -> str:
 
 def safe_preview(text: str, n: int = 240) -> str:
     t = normalize_text(text)
-    return t if len(t) <= n else t[: n - 1] + "…"
+    return t if len(t) <= n else t[: max(0, n - 3)] + "..."
